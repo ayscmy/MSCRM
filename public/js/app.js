@@ -29,7 +29,9 @@ const NAV = [
     group: '系统',
     items: [
       { key: 'settings', label: '系统设置', icon: 'gear' },
-      { key: 'admin', label: '用户与组织', icon: 'admin', module: 'admin' },
+      // 用户管理权限以后端 MANAGE_RULES 为准（admin/gm/director/manager），
+      // 不能用 module:'admin' 过滤——gm 有管理权但 modules 不含 admin，会被误挡在门外
+      { key: 'admin', label: '用户与组织', icon: 'admin', role: ['admin', 'owner', 'gm', 'director', 'manager'] },
     ],
   },
 ];
