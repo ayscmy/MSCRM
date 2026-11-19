@@ -330,7 +330,6 @@ CREATE TABLE IF NOT EXISTS accounts (
   updated_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_acc_org ON accounts(org_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_acc_external ON accounts(external_id);
 CREATE INDEX IF NOT EXISTS idx_acc_owner ON accounts(owner_id);
 
 CREATE TABLE IF NOT EXISTS contacts (
@@ -817,7 +816,18 @@ export async function migrate() {
   if (DB_ENGINE === 'postgres') await migratePg();
   else await migrateSqlite();
   await ensureColumns();
+  await ensureAccountIndexes();
   await ensurePoolIndexes();
+}
+
+/**
+ * 依赖「补列」结果的索引必须最后建。
+ * 老库升级时 external_id 是 ensureColumns() 才加上的，若把 idx_acc_external 写进建表 DDL，
+ * 老库的 accounts 表已存在（CREATE TABLE IF NOT EXISTS 跳过），此时执行该索引会报
+ * no such column: external_id，导致 migrate() 整体失败、服务起不来。
+ */
+async function ensureAccountIndexes() {
+  await run('CREATE UNIQUE INDEX IF NOT EXISTS idx_acc_external ON accounts(external_id)');
 }
 
 /**
