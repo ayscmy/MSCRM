@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { esc, toast, icon } from '../ui.js';
+import { esc, toast } from '../ui.js';
 
 const OPS = [
   ['gt', '大于 >'], ['gte', '大于等于 ≥'], ['lt', '小于 <'], ['lte', '小于等于 ≤'],
