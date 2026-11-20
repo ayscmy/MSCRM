@@ -58,7 +58,7 @@ function ruleCard(f, i, editable) {
     : `<span class="flow-badge">草稿 v${f.version}</span>`;
   return `<div class="flow-lane ${editable ? 'is-editing' : ''}" data-flow-index="${i}">
     <div class="flow-lane-head">
-      <span class="flow-grip" title="优先级">⋮⋮</span>
+      <span class="flow-grip" title="${editable && !f.fallback ? '拖拽调整优先级' : '优先级'}" ${editable && !f.fallback ? 'draggable="true"' : ''}>⋮⋮</span>
       <input class="flow-priority" type="number" min="1" value="${esc(f.priority)}" data-cprop="priority" data-ci="${i}" ${editable ? '' : 'disabled'} />
       <b class="flow-name">${esc(f.name)}</b>
       ${badge}
@@ -92,8 +92,8 @@ function editorPanel(f, i) {
     </div>`).join('')}
     <button class="btn btn-sm" data-act="add-cond" data-i="${i}">+ 条件</button>
     <div class="flow-sub">审批节点（按顺序执行）</div>
-    ${(f.steps || []).map((s, j) => `<div class="flow-step-edit" data-step="${j}">
-      <div class="flow-step-head"><b>${j + 1}</b><input class="input" value="${esc(s.name)}" data-sprop="step_name" data-si="${i}" data-sj="${j}" />
+    ${(f.steps || []).map((s, j) => `<div class="flow-step-edit" data-step="${j}" data-step-drop="${j}">
+      <div class="flow-step-head"><span class="flow-step-grip" draggable="true" data-step-grip="${j}" title="拖拽调整节点顺序">⋮⋮</span><b>${j + 1}</b><input class="input" value="${esc(s.name)}" data-sprop="step_name" data-si="${i}" data-sj="${j}" />
         <button class="btn btn-sm" data-act="del-step" data-i="${i}" data-j="${j}">×</button></div>
       <div class="flow-grid2">
         <label>审批人来源<select data-sprop="approver_mode" data-si="${i}" data-sj="${j}">
@@ -114,7 +114,13 @@ function editorPanel(f, i) {
           `<label class="chk"><input type="checkbox" data-sprop="${k}" data-si="${i}" data-sj="${j}" ${Number(s[k]) ? 'checked' : ''} /> ${label}</label>`).join('')}
       </div>
     </div>`).join('')}
-    ${f.auto_approve ? '' : '<button class="btn btn-sm" data-act="add-step" data-i="${i}">+ 审批节点</button>'}`;
+    ${f.auto_approve ? '' : '<button class="btn btn-sm" data-act="add-step" data-i="${i}">+ 审批节点</button>'}
+    ${f.auto_approve ? '' : `<div class="flow-sub">拖拽下方角色或人员到节点上，即可指定审批人</div>
+    <div class="flow-approver-pool">
+      ${roles.map(r => `<span class="flow-approver-chip" draggable="true" data-approver-mode="role" data-approver-id="${esc(r)}">${esc(r)}</span>`).join('')}
+      ${users.slice(0, 40).map(u => `<span class="flow-approver-chip" draggable="true" data-approver-mode="user" data-approver-id="${u.id}">${esc(u.name)}</span>`).join('')}
+    </div>
+    ${users.length > 40 ? `<div class="muted" style="font-size:10.5px;margin-top:4px">仅显示前 40 位人员，更多人员请用节点属性里的下拉框选择</div>` : ''}`}`;
 }
 
 function previewPanel() {
@@ -172,6 +178,10 @@ function render() {
 }
 
 function bind() {
+  let draggingRule = null;
+  let draggingStep = null;
+  let draggingApprover = null;
+
   S.el.querySelectorAll('[data-act]').forEach(btn => {
     btn.onclick = async () => {
       const act = btn.dataset.act;
@@ -269,7 +279,7 @@ function bind() {
   });
   S.el.querySelectorAll('[data-flow-index]').forEach(lane => {
     lane.onclick = e => {
-      if (e.target.closest('[data-act]') || e.target.closest('input') || e.target.closest('select')) return;
+      if (e.target.closest('[data-act]') || e.target.closest('input') || e.target.closest('select') || e.target.closest('.flow-grip') || e.target.closest('.flow-step-grip')) return;
       if (!S.editing) return;
       S.selected = Number(lane.dataset.flowIndex);
       render();
@@ -307,6 +317,92 @@ function bind() {
         if (s.approver_mode === 'user') s.role = null;
         else s.user_id = null;
       }
+      render();
+    };
+  });
+
+  S.el.querySelectorAll('.flow-grip[draggable="true"]').forEach(grip => {
+    grip.ondragstart = e => {
+      if (!S.editing) return;
+      const lane = grip.closest('[data-flow-index]');
+      draggingRule = Number(lane?.dataset.flowIndex);
+      if (Number.isNaN(draggingRule)) draggingRule = null;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', `rule-${draggingRule}`);
+    };
+    grip.ondragend = () => {
+      draggingRule = null;
+      S.el.querySelectorAll('.flow-lane').forEach(x => x.classList.remove('drag-over'));
+    };
+  });
+  S.el.querySelectorAll('[data-flow-index]').forEach(lane => {
+    lane.ondragover = e => {
+      if (draggingRule === null) return;
+      e.preventDefault();
+      lane.classList.add('drag-over');
+    };
+    lane.ondragleave = () => lane.classList.remove('drag-over');
+    lane.ondrop = e => {
+      if (draggingRule === null) return;
+      e.preventDefault();
+      lane.classList.remove('drag-over');
+      const to = Number(lane.dataset.flowIndex);
+      const target = S.working[to];
+      const insertAt = target?.fallback ? S.working.findIndex(f => f.fallback) : to;
+      if (draggingRule === insertAt || insertAt < 0) { draggingRule = null; return; }
+      const [moved] = S.working.splice(draggingRule, 1);
+      S.working.splice(insertAt, 0, moved);
+      S.working.forEach((f, idx) => { f.priority = f.fallback ? 9999 : (idx + 1) * 10; });
+      S.selected = insertAt;
+      draggingRule = null;
+      render();
+    };
+  });
+
+  S.el.querySelectorAll('[data-step-grip]').forEach(grip => {
+    grip.ondragstart = e => {
+      draggingStep = { i: S.selected, j: Number(grip.dataset.stepGrip) };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', `step-${draggingStep.j}`);
+    };
+    grip.ondragend = () => {
+      draggingStep = null;
+      S.el.querySelectorAll('.flow-step-edit').forEach(x => x.classList.remove('drag-over'));
+    };
+  });
+  S.el.querySelectorAll('[data-approver-id]').forEach(chip => {
+    chip.ondragstart = e => {
+      draggingApprover = { mode: chip.dataset.approverMode, id: chip.dataset.approverId };
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('text/plain', `approver-${draggingApprover.mode}-${draggingApprover.id}`);
+    };
+  });
+  S.el.querySelectorAll('[data-step-drop]').forEach(card => {
+    card.ondragover = e => {
+      if (!draggingStep && !draggingApprover) return;
+      e.preventDefault();
+      card.classList.add('drag-over');
+    };
+    card.ondragleave = () => card.classList.remove('drag-over');
+    card.ondrop = e => {
+      if (!draggingStep && !draggingApprover) return;
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const target = Number(card.dataset.stepDrop);
+      const steps = S.working[S.selected]?.steps || [];
+      if (draggingStep && draggingStep.i === S.selected) {
+        const [moved] = steps.splice(draggingStep.j, 1);
+        if (moved) steps.splice(target, 0, moved);
+      } else if (draggingApprover && steps[target]) {
+        const s = steps[target];
+        if (draggingApprover.mode === 'role') {
+          s.approver_mode = 'role'; s.role = draggingApprover.id; s.user_id = null;
+        } else {
+          s.approver_mode = 'user'; s.user_id = Number(draggingApprover.id); s.role = null;
+        }
+      }
+      draggingStep = null;
+      draggingApprover = null;
       render();
     };
   });

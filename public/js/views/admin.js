@@ -130,6 +130,7 @@ async function renderUsers(panel, ctx) {
   const active = d.rows.filter((u) => u.status === 'active');
   const left = d.rows.filter((u) => u.status === 'left');
   const q = d.quota || { unlimited: true };
+  const grantable = (d.assignable?.length ? d.roles.filter((r) => d.assignable.includes(r.key)) : d.roles) || [];
 
   // 额度用满时，「新增用户」直接弹说明，省掉「填完表单才被拒」的一次挫败
   const newBtn = panel.parentElement?.querySelector('[data-new-user]');
@@ -141,6 +142,12 @@ async function renderUsers(panel, ctx) {
       <span>社区版最多 <b>${q.limit}</b> 个在职用户，已用满（${q.current}/${q.limit}）。继续添加需要升级到商业授权。</span>
       <button class="btn btn-sm" data-upgrade>了解授权</button>
     </div></div>` : ''}
+
+  <div class="role-pool" data-role-pool>
+    <b style="font-size:11.5px;font-weight:500;color:var(--ink-3);align-self:center">角色权限池</b>
+    ${grantable.map((r) => `<span class="role-pool-chip" draggable="true" data-grant-role="${esc(r.key)}" title="拖到成员行的角色列即可授权">${esc(r.label)}</span>`).join('') || '<span class="muted">无可授予角色</span>'}
+    <span class="muted" style="font-size:11px;align-self:center;margin-left:auto">拖到成员行授权 · 把成员角色拖回这里回收</span>
+  </div>
 
   <div class="listwrap"><div class="tablewrap">
     <table class="grid">
@@ -156,7 +163,9 @@ async function renderUsers(panel, ctx) {
             <div class="org-lv l${u.org_level || 1}"><span class="bar"></span>${esc(u.org_name)}</div>
             <div class="cell-sub">${LEVEL_TEXT[u.org_level] || `${u.org_level || 1} 级`}</div>
           </td>
-          <td>${u.roles.map((r) => badge((d.roles.find((x) => x.key === r) || {}).label || r, 'blue')).join(' ')}</td>
+          <td data-role-cell="${u.id}">
+            ${u.roles.map((r) => `<span class="user-role-chip" ${u.canManage && u.status !== 'left' ? `draggable="true" data-revoke-role="${u.id}:${esc(r)}" title="拖回角色权限池即可回收"` : ''}>${badge((d.roles.find((x) => x.key === r) || {}).label || r, 'blue')}</span>`).join(' ')}
+          </td>
           <td class="muted">${esc(u.relation || '—')}</td>
           <td>${statusCell(u)}</td>
           <td class="nowrap muted">${u.last_login_at ? relTime(u.last_login_at) : '从未登录'}</td>
@@ -210,6 +219,67 @@ async function renderUsers(panel, ctx) {
       } catch (e) { handleApiError(e); }
     };
   });
+
+  const findUser = (id) => d.rows.find((u) => String(u.id) === String(id));
+  const setRoles = async (u, roles) => {
+    if (!u?.canManage || u.status === 'left') return toast('该成员不可编辑', 'err');
+    if (!roles.length) return toast('至少保留一个角色', 'err');
+    try {
+      await api.patch(`/api/admin/users/${u.id}`, { roles });
+      toast('角色已更新', 'ok');
+      ctx.refresh();
+    } catch (e) { handleApiError(e); }
+  };
+  panel.querySelectorAll('[data-grant-role]').forEach((chip) => {
+    chip.ondragstart = (e) => {
+      e.dataTransfer.setData('text/plain', `grant:${chip.dataset.grantRole}`);
+      e.dataTransfer.effectAllowed = 'copy';
+    };
+  });
+  panel.querySelectorAll('[data-role-cell]').forEach((cell) => {
+    cell.ondragover = (e) => {
+      if (![...e.dataTransfer.types].includes('text/plain')) return;
+      e.preventDefault();
+      cell.closest('tr')?.classList.add('row-drag-over');
+    };
+    cell.ondragleave = () => cell.closest('tr')?.classList.remove('row-drag-over');
+    cell.ondrop = async (e) => {
+      e.preventDefault();
+      cell.closest('tr')?.classList.remove('row-drag-over');
+      const raw = e.dataTransfer.getData('text/plain');
+      if (!raw.startsWith('grant:')) return;
+      const key = raw.slice(6);
+      const u = findUser(cell.dataset.roleCell);
+      if (!u?.canManage || u.status === 'left') return toast('该成员不可编辑', 'err');
+      if (u.roles.includes(key)) return toast('该成员已有此角色', 'err');
+      await setRoles(u, [...u.roles, key]);
+    };
+  });
+  panel.querySelectorAll('[data-revoke-role]').forEach((chip) => {
+    chip.ondragstart = (e) => {
+      e.dataTransfer.setData('text/plain', `revoke:${chip.dataset.revokeRole}`);
+      e.dataTransfer.effectAllowed = 'move';
+    };
+  });
+  const pool = panel.querySelector('[data-role-pool]');
+  if (pool) {
+    pool.ondragover = (e) => {
+      if (![...e.dataTransfer.types].includes('text/plain')) return;
+      e.preventDefault();
+      pool.classList.add('drag-over');
+    };
+    pool.ondragleave = () => pool.classList.remove('drag-over');
+    pool.ondrop = async (e) => {
+      e.preventDefault();
+      pool.classList.remove('drag-over');
+      const raw = e.dataTransfer.getData('text/plain');
+      if (!raw.startsWith('revoke:')) return;
+      const [, uid, role] = raw.split(':');
+      const u = findUser(uid);
+      if (!u) return;
+      await setRoles(u, u.roles.filter((r) => r !== role));
+    };
+  }
 }
 
 function editUser(user, ctx, data) {
