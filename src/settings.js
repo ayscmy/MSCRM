@@ -19,6 +19,8 @@ export const DEFAULTS = {
   'approve.contract.terms_director': '30',
   'approve.contract.amount_legal': '1000000',
   'approve.contract.terms_legal': '60',
+  // 可视化审批流程：新安装由安装向导打开；老实例升级保持关闭，行为不变
+  'approval.custom.enabled': '0',
   // 附件
   'attachment.max_size': '1048576',
   'attachment.allowed': 'pdf,doc,docx,xls,xlsx,ppt,pptx,txt,md,csv,png,jpg,jpeg,webp,gif',
@@ -119,6 +121,15 @@ export const SETTING_LABELS = [{
     label: '加法务审核的账期',
     type: 'number',
     hint: '天，超过即需法务'
+  }]
+}, {
+  group: '审批流程引擎',
+  desc: '关闭时按上面的阈值链执行；开启后由「审批流程设计器」决定审批节点。新安装默认开启并使用官方预设。',
+  items: [{
+    key: 'approval.custom.enabled',
+    label: '启用可视化审批流程',
+    type: 'switch',
+    hint: '开启后，下方阈值仍作为官方预设的计算输入；进行中的审批不受影响'
   }]
 }, {
   group: '附件与报价',

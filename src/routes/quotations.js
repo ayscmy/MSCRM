@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { scopeFilter, canEditRecord, canModule } from '../auth.js';
 import { chainForDiscount, createApproval, approvalDetail, priceApprovalRequired, resolveChain, applyAssignees } from '../approval.js';
 import { canUseCustomItem, getSettingNum, getSetting, companyProfile, isOn } from '../settings.js';
+import { buildApprovalContext, resolveApprovalChain, resolveFlowSteps } from '../approval-flow.js';
 import { loadQuoteSheet, renderSheetHtml } from '../doc/quote-sheet.js';
 import { createContractRecord } from '../contracts-service.js';
 import { sendMail } from '../mailer.js';
@@ -248,12 +249,24 @@ POST('/api/quotations/:id/submit', async ctx => {
   const itemCount = (await one('select count(*) c from quotation_items where quotation_id=?', q.id)).c;
   if (!itemCount) throw bad('报价明细为空，请重新选择产品');
 
-  // 未让价（折扣率为 0）：价格无需审批，直接置为已批准，下一步即创建合同
-  if (!(await priceApprovalRequired(q.discount_rate))) {
+  // 预览与提交共用同一套链生成：legacy 走旧阈值，custom 走可视化设计器规则
+  const flowCtx = await buildApprovalContext('quote_discount', {
+    record: q,
+    orgId: op.org_id,
+    userId: ctx.user.id,
+    applicantRole: ctx.user.role
+  });
+  const decision = await resolveApprovalChain('quote_discount', flowCtx);
+  const customSkip = decision.engine === 'custom' && decision.meta.autoApprove;
+  const legacySkip = decision.engine === 'legacy' && !(await priceApprovalRequired(q.discount_rate));
+  if (customSkip || legacySkip) {
+    const note = customSkip
+      ? `按审批流程「${decision.meta.ruleName}」免审批，提交即通过`
+      : '未折扣报价，按规则免价格审批，提交即通过（下一步：创建合同）';
     await tx(async () => {
       await run("update quotations set status='approved', approval_id=null, updated_at=? where id=?", nowIso(), q.id);
       await run(`insert into activities(target_type,target_id,type,content,result,user_id,created_at)
-         values('quotation', ?, 'note', ?, ?, ?, ?)`, q.id, '未折扣报价，按规则免价格审批，提交即通过（下一步：创建合同）', 'approved', ctx.user.id, nowIso());
+         values('quotation', ?, 'note', ?, ?, ?, ?)`, q.id, note, 'approved', ctx.user.id, nowIso());
     });
     return {
       ok: true,
@@ -261,17 +274,33 @@ POST('/api/quotations/:id/submit', async ctx => {
       status: 'approved',
       discount_rate: q.discount_rate,
       next: 'contract',
-      message: '未折扣，已免价格审批，可直接创建合同'
+      engine: decision.engine,
+      rule: decision.meta.ruleName || null,
+      message: customSkip ? '按审批流程免审批，可直接创建合同' : '未折扣，已免价格审批，可直接创建合同'
     };
   }
   if (!(q.cost > 0) && !q.has_custom) {
     throw bad('提交前请补充成本信息（用于计算毛利，仅经理及以上可见）');
   }
-  const chain = await chainForDiscount(q.discount_rate, op.org_id);
   const b = ctx.body || {};
-  const resolved = applyAssignees(await resolveChain(chain, op.org_id), b.assignees);
+  const resolved = applyAssignees(await resolveFlowSteps(decision.chain, op.org_id, ctx.user.id), b.assignees);
   if (resolved.missing.length) {
     throw bad(`审批链缺少审批人：${resolved.missing.map(m => m.label).join('、')}。请先在「系统设置 → 用户与角色」里给该角色指定在职负责人，或在提交时手动选择`, resolved.missing.map(m => `${m.label}：本组织链上没有在职的该角色`));
+  }
+  if (!resolved.steps.length) {
+    await tx(async () => {
+      await run("update quotations set status='approved', approval_id=null, updated_at=? where id=?", nowIso(), q.id);
+      await run(`insert into activities(target_type,target_id,type,content,result,user_id,created_at)
+         values('quotation', ?, 'note', ?, ?, ?, ?)`, q.id, '审批节点全部跳过，按流程直接通过', 'approved', ctx.user.id, nowIso());
+    });
+    return {
+      ok: true,
+      skipped: true,
+      status: 'approved',
+      next: 'contract',
+      engine: decision.engine,
+      message: '审批节点全部跳过，已直接通过'
+    };
   }
   const {
     approvalId
@@ -284,12 +313,20 @@ POST('/api/quotations/:id/submit', async ctx => {
     amount: q.amount,
     applicantId: ctx.user.id,
     orgId: op.org_id,
-    steps: resolved.steps
+    steps: resolved.steps,
+    flow: decision.engine === 'custom' ? {
+      flowId: decision.meta.flowId,
+      version: decision.meta.flowVersion,
+      ruleId: decision.meta.ruleId,
+      source: decision.meta.source
+    } : null
   });
   await run("update quotations set status='pending', approval_id=?, updated_at=? where id=?", approvalId, nowIso(), q.id);
   return {
     ok: true,
     approvalId,
+    engine: decision.engine,
+    rule: decision.meta.ruleName || null,
     steps: resolved.steps.map(s => ({
       role: s.role,
       label: s.label,

@@ -571,3 +571,51 @@ nav.sb-nav { flex: 1; overflow-y: auto; padding-top: 2px; }
   user-select: none;
   letter-spacing: .02em;
 }
+
+/* ---------------- 可视化审批流程设计器 ---------------- */
+.flow-design { border: 1px solid var(--line); border-radius: var(--radius-lg); background: #fff; overflow: hidden; }
+.flow-head { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px 12px; border-bottom: 1px solid var(--line-soft); }
+.flow-head h3 { font-size: 14px; font-weight: 600; }
+.flow-head p { margin: 4px 0 0; font-size: 11.5px; }
+.flow-status { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--accent-ink); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; }
+.flow-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.flow-tabs { display: flex; gap: 6px; padding: 10px 16px; background: var(--bg-sub); border-bottom: 1px solid var(--line-soft); }
+.flow-tabs .is-active { border-color: var(--accent-line); color: var(--accent-ink); background: var(--accent-soft); }
+.flow-body { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 14px; padding: 14px 16px; }
+.flow-canvas { min-width: 0; }
+.flow-side { min-width: 0; border-left: 1px solid var(--line-soft); padding-left: 14px; }
+.flow-lane { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 9px; background: #fff; cursor: pointer; }
+.flow-lane:hover { border-color: var(--accent-line); }
+.flow-lane.is-editing { border-color: var(--accent-line); background: var(--bg-sub); }
+.flow-lane-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.flow-grip { color: var(--ink-4); cursor: grab; font-size: 12px; }
+.flow-priority { width: 58px; padding: 3px 5px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 11.5px; }
+.flow-name { font-size: 12.5px; font-weight: 500; }
+.flow-badge { margin-left: auto; font-size: 10.5px; color: var(--ink-3); background: var(--bg-sunken); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.flow-badge-ok { color: var(--green); background: var(--green-soft); }
+.flow-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 5px; font-size: 11.5px; }
+.flow-line-label { width: 28px; color: var(--ink-3); flex: 0 0 28px; }
+.flow-chip { display: inline-block; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-sunken); color: var(--ink-2); font-size: 11px; }
+.flow-node { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: var(--radius-sm); background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent-ink); font-size: 11.5px; }
+.flow-node b { font-weight: 500; font-size: 10px; opacity: .7; }
+.flow-node small { color: var(--ink-3); font-size: 10px; }
+.flow-end { background: var(--green-soft); border-color: #cfe8da; color: var(--green); }
+.flow-conn { color: var(--ink-4); font-size: 12px; }
+.flow-prop-title { font-size: 12.5px; font-weight: 500; margin-bottom: 10px; }
+.flow-sub { font-size: 11px; color: var(--ink-3); margin: 12px 0 6px; }
+.flow-cond-row, .flow-grid2 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 6px; }
+.flow-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.flow-cond-row input, .flow-cond-row select, .flow-grid2 select, .flow-grid2 input { width: 100%; padding: 4px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 11.5px; background: #fff; }
+.flow-step-edit { border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 8px; margin-bottom: 8px; }
+.flow-step-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.flow-step-head b { font-size: 11px; color: var(--ink-3); }
+.flow-step-head input { flex: 1; }
+.flow-toggles { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 7px; }
+.flow-toggles .chk, .flow-grid2 .chk { font-size: 11px; color: var(--ink-2); }
+.flow-preview { margin: 0 16px 14px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--bg-sub); }
+.flow-result-line { margin-top: 7px; font-size: 11.5px; line-height: 1.7; }
+.flow-warn { color: var(--red); font-size: 11px; }
+@media (max-width: 1100px) {
+  .flow-body { grid-template-columns: 1fr; }
+  .flow-side { border-left: 0; padding-left: 0; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+}

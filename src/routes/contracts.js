@@ -1,7 +1,8 @@
 import { GET, POST, PATCH, bad, notFound, denied } from '../http.js';
 import { all, one, run, nowIso, idOf, today } from '../db.js';
 import { scopeFilter, canEditRecord, canModule } from '../auth.js';
-import { chainForContract, createApproval, approvalDetail, createPaymentPlans, resolveChain, applyAssignees } from '../approval.js';
+import { chainForContract, createApproval, approvalDetail, createPaymentPlans, resolveChain, applyAssignees, applyBusiness } from '../approval.js';
+import { buildApprovalContext, resolveApprovalChain, resolveFlowSteps } from '../approval-flow.js';
 import { loadContractDoc, renderContractHtml } from '../doc/contract-doc.js';
 import { loadQuoteSheet } from '../doc/quote-sheet.js';
 import { quoteSheetPayload } from './quotations.js';
@@ -223,14 +224,38 @@ POST('/api/contracts/:id/submit', async ctx => {
     const q = await one('select status from quotations where id=?', c.quotation_id);
     if (!q || !['approved', 'converted'].includes(q.status)) throw bad('关联报价尚未通过折扣审批，不能提交合同');
   }
-  const chain = await chainForContract({
-    amount: Number(c.amount),
-    paymentTerms: Number(c.payment_terms),
+  const flowCtx = await buildApprovalContext('contract', {
+    record: c,
+    orgId: c.org_id,
+    userId: ctx.user.id,
+    applicantRole: ctx.user.role,
     nonStandard: !!ctx.body?.non_standard
   });
-  const resolved = applyAssignees(await resolveChain(chain, c.org_id), ctx.body?.assignees);
+  const decision = await resolveApprovalChain('contract', flowCtx);
+  if (decision.engine === 'custom' && decision.meta.autoApprove) {
+    await applyBusiness({ type: 'contract', target_id: c.id, applicant_id: ctx.user.id }, 'approved', `按审批流程「${decision.meta.ruleName}」免审批`);
+    await run('update contracts set approval_id=null, updated_at=? where id=?', nowIso(), c.id);
+    return {
+      ok: true,
+      skipped: true,
+      engine: decision.engine,
+      rule: decision.meta.ruleName,
+      message: '按审批流程免审批，合同已生效'
+    };
+  }
+  const resolved = applyAssignees(await resolveFlowSteps(decision.chain, c.org_id, ctx.user.id), ctx.body?.assignees);
   if (resolved.missing.length) {
     throw bad(`审批链缺少审批人：${resolved.missing.map(m => m.label).join('、')}。请先在「系统设置 → 用户与角色」里给该角色指定在职负责人，或在提交时手动选择`, resolved.missing.map(m => `${m.label}：本组织链上没有在职的该角色`));
+  }
+  if (!resolved.steps.length) {
+    await applyBusiness({ type: 'contract', target_id: c.id, applicant_id: ctx.user.id }, 'approved', '审批节点全部跳过，按流程直接通过');
+    await run('update contracts set approval_id=null, updated_at=? where id=?', nowIso(), c.id);
+    return {
+      ok: true,
+      skipped: true,
+      engine: decision.engine,
+      message: '审批节点全部跳过，合同已生效'
+    };
   }
   const {
     approvalId
@@ -243,12 +268,27 @@ POST('/api/contracts/:id/submit', async ctx => {
     amount: c.amount,
     applicantId: ctx.user.id,
     orgId: c.org_id,
-    steps: resolved.steps
+    steps: resolved.steps,
+    flow: decision.engine === 'custom' ? {
+      flowId: decision.meta.flowId,
+      version: decision.meta.flowVersion,
+      ruleId: decision.meta.ruleId,
+      source: decision.meta.source
+    } : null
   });
-  await run(`update contracts set status=?, approval_id=?, updated_at=? where id=?`, chain[0].role === 'manager' ? 'sales_review' : chain[0].role === 'finance' ? 'finance_review' : 'legal_review', approvalId, nowIso(), c.id);
+  const first = decision.chain[0] || {};
+  const role = first.role;
+  const initialStatus = first.stage === 'finance' ? 'finance_review'
+    : first.stage === 'legal' ? 'legal_review'
+      : role === 'finance' ? 'finance_review'
+        : role === 'legal' ? 'legal_review'
+          : 'sales_review';
+  await run(`update contracts set status=?, approval_id=?, updated_at=? where id=?`, initialStatus, approvalId, nowIso(), c.id);
   return {
     ok: true,
     approvalId,
+    engine: decision.engine,
+    rule: decision.meta.ruleName || null,
     steps: resolved.steps.map(s => ({
       role: s.role,
       label: s.label,

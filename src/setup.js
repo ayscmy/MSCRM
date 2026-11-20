@@ -1,6 +1,7 @@
 import { one, run, tx, nowIso, idOf } from './db.js';
 import { hashPassword } from './password.js';
 import { setSetting } from './settings.js';
+import { seedOfficialFlows } from './approval-flow.js';
 import { HttpError, bad } from './http.js';
 
 /**
@@ -74,6 +75,9 @@ export async function createWorkspace(input) {
     // 公司抬头默认用安装时填写的企业名称，后续可在「系统设置」里补全税号、地址、开户行
     await setSetting('company.name', v.company);
     await setSetting('company.short_name', v.company.slice(0, 8));
+    // 全新安装启用官方预设审批流程；老实例升级不经过这里，保持旧行为
+    await seedOfficialFlows(userId);
+    await setSetting('approval.custom.enabled', '1');
     await run(`insert into audit_logs(user_id, user_name, action, target_type, target_id, detail, ip, created_at)
        values(?,?,?,?,?,?,?,?)`, userId, v.name, 'setup', 'workspace', orgId, `完成初始化：${v.company}`, '', now);
     return {

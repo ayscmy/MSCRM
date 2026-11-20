@@ -134,16 +134,33 @@ export async function resolveChain(chain, orgId) {
   // 必须逐个 await：forEach(async ...) 不会等待回调，函数返回时 steps 仍是空数组，
   // 审批链会被静默丢弃（历史上 leads-api.js 已就同一问题改用 for...of）。
   for (const [i, c] of chain.entries()) {
-    const candidates = await approverCandidates(orgId, c.role);
+    let candidates = [];
+    if (c.mode === 'user' && c.user_id) {
+      const u = await one(`select u.id, u.name, u.title, u.discount_limit, o.name as org_name, o.id as org_id
+         from users u join org_units o on o.id = u.org_id
+         where u.id = ? and u.status = 'active'`, c.user_id);
+      if (u) candidates = [u];
+      else missing.push({ role: c.role || 'user', label: c.label, reason: '指定用户不存在或已停用' });
+    } else {
+      candidates = await approverCandidates(orgId, c.role);
+      if (!candidates.length) missing.push({
+        role: c.role,
+        label: c.label
+      });
+    }
     const first = candidates[0] || null;
-    if (!first) missing.push({
-      role: c.role,
-      label: c.label
-    });
     steps.push({
       seq: i + 1,
-      role: c.role,
+      role: c.role || 'user',
       label: c.label,
+      approver_mode: c.mode === 'user' ? 'user' : 'role',
+      flow_step_id: c.flow_step_id || null,
+      allow_change: c.allow_change !== 0,
+      on_missing: c.on_missing || 'block',
+      skip_duplicate: c.skip_duplicate ? 1 : 0,
+      // 旧链没有 self 配置，保持「允许自审」的历史行为；自定义节点默认关闭自审
+      allow_self: c.allow_self === undefined ? 1 : (c.allow_self ? 1 : 0),
+      stage: c.stage || null,
       approver_id: first ? first.id : null,
       approver_name: first ? first.name : null,
       approver_title: first ? first.title : null,
@@ -161,7 +178,8 @@ export async function resolveChain(chain, orgId) {
 export function applyAssignees(resolved, assignees) {
   if (!assignees || typeof assignees !== 'object') return resolved;
   const steps = resolved.steps.map(s => {
-    const wanted = assignees[s.role];
+    // 新流程按节点序号改选，旧流程按角色键改选；两套格式都兼容
+    const wanted = assignees[s.seq] || assignees[s.role];
     if (!wanted) return s;
     const hit = s.candidates.find(c => Number(c.id) === Number(wanted));
     return hit ? {
@@ -188,6 +206,8 @@ export async function buildSteps(chain, orgId) {
     seq: s.seq,
     role: s.role,
     label: s.label,
+    approver_mode: s.approver_mode,
+    flow_step_id: s.flow_step_id,
     approver_id: s.approver_id,
     decision: s.approver_id ? 'pending' : 'skipped',
     comment: s.approver_id ? null : '未找到对应审批人，自动跳过',
@@ -204,25 +224,29 @@ export async function createApproval({
   applicantId,
   orgId,
   chain,
-  steps
+  steps,
+  flow
 }) {
   const rows = steps ? steps.map((s, i) => ({
     seq: i + 1,
     role: s.role,
     label: s.label,
+    approver_mode: s.approver_mode || 'role',
+    flow_step_id: s.flow_step_id || null,
     approver_id: s.approver_id,
     decision: s.approver_id ? 'pending' : 'skipped',
     comment: s.approver_id ? s.comment || null : '未找到对应审批人，自动跳过',
     decided_at: s.approver_id ? null : nowIso()
   })) : await buildSteps(chain, orgId);
   const firstPending = rows.find(s => s.decision === 'pending');
+  const f = flow || {};
   const approvalId = await tx(async () => {
-    const r = await run(`insert into approvals(type,target_type,target_id,title,summary,amount,status,current_step,total_steps,applicant_id,org_id,created_at)
-       values(?,?,?,?,?,?,?,?,?,?,?,?)`, type, targetType, targetId, title, summary, amount, 'pending', firstPending ? firstPending.seq : 1, rows.length, applicantId, orgId, nowIso());
+    const r = await run(`insert into approvals(type,target_type,target_id,title,summary,amount,status,current_step,total_steps,applicant_id,org_id,flow_id,flow_version,rule_id,flow_source,created_at)
+       values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, type, targetType, targetId, title, summary, amount, 'pending', firstPending ? firstPending.seq : 1, rows.length, applicantId, orgId, f.flowId || null, f.version || null, f.ruleId || null, f.source || null, nowIso());
     const aid = idOf(r);
     for (const s of rows) {
-      await run(`insert into approval_steps(approval_id,seq,role,label,approver_id,decision,comment,decided_at)
-         values(?,?,?,?,?,?,?,?)`, aid, s.seq, s.role, s.label, s.approver_id, s.decision, s.comment, s.decided_at);
+      await run(`insert into approval_steps(approval_id,seq,role,label,approver_mode,flow_step_id,approver_id,decision,comment,decided_at)
+         values(?,?,?,?,?,?,?,?,?,?)`, aid, s.seq, s.role, s.label, s.approver_mode || 'role', s.flow_step_id || null, s.approver_id, s.decision, s.comment, s.decided_at);
     }
     return aid;
   });
@@ -303,7 +327,7 @@ export async function decide(approvalId, user, decision, comment, { all = false 
     };
   });
 }
-async function applyBusiness(ap, result, comment) {
+export async function applyBusiness(ap, result, comment) {
   if (ap.type === 'quote_discount') {
     await run('update quotations set status = ?, updated_at = ? where id = ?', result === 'approved' ? 'approved' : 'rejected', nowIso(), ap.target_id);
     await run(`insert into activities(target_type,target_id,type,content,result,user_id,created_at)

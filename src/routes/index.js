@@ -13,6 +13,7 @@ import './quotations.js';
 import './contracts.js';
 import './finance.js';
 import './approvals.js';
+import './approval-flows.js';
 import './reports.js';
 import './attachments.js';
 import './admin.js';

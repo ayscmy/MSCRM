@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { icon } from '../icons.js';
 import { esc, money, toast } from '../ui.js';
+import { renderDesigner } from './approval-flows.js';
 
 const fmtBytes = (n) => {
   const v = Number(n) || 0;
@@ -66,6 +67,8 @@ export async function render(el, route, ctx) {
     <div class="notice blue" style="margin-bottom:16px">${icon('info', 14)}
       <div>审批链规则：折扣 ≤ 经理阈值只需经理；超过经理阈值加总监；超过总监阈值再加总经理。
       若某位审批人单独设置了「可批折扣」，以个人设置为准。</div></div>
+
+    <div id="flowDesigner" style="margin-bottom:18px"></div>
 
     <div class="setgrid">
       ${d.schema.map((group) => `<div class="setcard">
@@ -193,6 +196,8 @@ export async function render(el, route, ctx) {
       <span class="node">部门经理</span><i class="arrow">→</i><span class="node">销售总监</span></div><span class="muted">中等折扣</span></div>
     <div class="chain-row"><span class="pct">&gt; ${dr}%</span><div class="chain">
       <span class="node">部门经理</span><i class="arrow">→</i><span class="node">销售总监</span><i class="arrow">→</i><span class="node">总经理</span></div><span class="muted">大额让价</span></div>`;
+
+  await renderDesigner(el.querySelector('#flowDesigner'), ctx, edit);
 
   /* ---------------- 商业授权 ---------------- */
   const copyMachine = el.querySelector('[data-copy-machine]');

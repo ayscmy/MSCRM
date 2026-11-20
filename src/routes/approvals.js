@@ -2,6 +2,7 @@ import { GET, POST, bad, notFound, denied } from '../http.js';
 import { all, one, run, nowIso } from '../db.js';
 import { pendingFor, approvalDetail, decide, chainForDiscount, chainForContract, resolveChain, applyAssignees, priceApprovalRequired } from '../approval.js';
 import { canModule, canEditRecord } from '../auth.js';
+import { buildApprovalContext, resolveApprovalChain, resolveFlowSteps } from '../approval-flow.js';
 
 /**
  * 审批链预览（提交前调用）
@@ -18,24 +19,32 @@ GET('/api/approvals/preview', async ctx => {
     const op = await one('select * from opportunities where id=?', q.opportunity_id);
     if (!op) throw notFound('商机不存在');
     if (!(await canEditRecord(ctx.user, op))) throw denied('无权查看该报价的审批链');
-    if (!(await priceApprovalRequired(q.discount_rate))) {
+    const flowCtx = await buildApprovalContext('quote_discount', { record: q, orgId: op.org_id, userId: ctx.user.id, applicantRole: ctx.user.role });
+    const decision = await resolveApprovalChain('quote_discount', flowCtx);
+    if ((decision.engine === 'custom' && decision.meta.autoApprove) ||
+        (decision.engine === 'legacy' && !(await priceApprovalRequired(q.discount_rate)))) {
       return {
         type,
         id,
         required: false,
         title: q.no,
-        reason: '未折扣报价按规则免价格审批，提交后直接进入合同流程',
+        engine: decision.engine,
+        rule: decision.meta.ruleName || null,
+        reason: decision.engine === 'custom'
+          ? `按审批流程「${decision.meta.ruleName}」免审批`
+          : '未折扣报价按规则免价格审批，提交后直接进入合同流程',
         steps: [],
         missing: []
       };
     }
-    const chain = await chainForDiscount(q.discount_rate, op.org_id);
-    const resolved = await resolveChain(chain, op.org_id);
+    const resolved = applyAssignees(await resolveFlowSteps(decision.chain, op.org_id, ctx.user.id), ctx.query.assignees ? JSON.parse(ctx.query.assignees) : null);
     return {
       type,
       id,
       required: true,
       title: q.no,
+      engine: decision.engine,
+      rule: decision.meta.ruleName || null,
       discount_rate: q.discount_rate,
       amount: q.amount,
       steps: resolved.steps,
@@ -45,18 +54,30 @@ GET('/api/approvals/preview', async ctx => {
   const c = await one('select * from contracts where id=?', id);
   if (!c) throw notFound('合同不存在');
   if (!(await canEditRecord(ctx.user, c))) throw denied('无权查看该合同的审批链');
-  const chain = await chainForContract({
-    amount: Number(c.amount),
-    paymentTerms: Number(c.payment_terms),
-    nonStandard: ctx.query.non_standard === '1'
-  });
-  const resolved = await resolveChain(chain, c.org_id);
+  const flowCtx = await buildApprovalContext('contract', { record: c, orgId: c.org_id, userId: ctx.user.id, applicantRole: ctx.user.role, nonStandard: ctx.query.non_standard === '1' });
+  const decision = await resolveApprovalChain('contract', flowCtx);
+  if (decision.engine === 'custom' && decision.meta.autoApprove) {
+    return {
+      type,
+      id,
+      required: false,
+      title: c.title,
+      engine: decision.engine,
+      rule: decision.meta.ruleName,
+      reason: `按审批流程「${decision.meta.ruleName}」免审批`,
+      steps: [],
+      missing: []
+    };
+  }
+  const resolved = applyAssignees(await resolveFlowSteps(decision.chain, c.org_id, ctx.user.id), ctx.query.assignees ? JSON.parse(ctx.query.assignees) : null);
   return {
     type,
     id,
     required: true,
     title: c.title,
     amount: c.amount,
+    engine: decision.engine,
+    rule: decision.meta.ruleName || null,
     steps: resolved.steps,
     missing: resolved.missing
   };

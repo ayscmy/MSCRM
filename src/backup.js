@@ -17,7 +17,8 @@ const TABLES = [
   'org_units', 'users', 'user_roles', 'sessions', 'accounts', 'contacts', 'leads',
   'pool_events',
   'opportunities', 'activities', 'quotations', 'contracts', 'payment_plans', 'invoices',
-  'payments', 'payment_allocations', 'approvals', 'approval_steps', 'targets', 'products',
+  'payments', 'payment_allocations', 'approvals', 'approval_steps',
+  'approval_flows', 'approval_flow_steps', 'targets', 'products',
   'quotation_items', 'attachments', 'settings', 'audit_logs', 'handovers',
   'contract_templates', 'quote_sends', 'api_clients', 'api_logs',
   'trial_accounts', 'tenants'

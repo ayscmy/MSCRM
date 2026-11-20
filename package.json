@@ -25,6 +25,7 @@
     "backup": "node --no-warnings src/backup.js",
     "test:pool": "node --no-warnings scripts/pool-check.mjs",
     "test:core": "node --no-warnings scripts/core-check.mjs",
+    "test:approval-flow": "node --no-warnings scripts/approval-flow-check.mjs",
     "test:tenant": "node --no-warnings scripts/tenant-check.mjs",
     "test:tenant-sync": "node --no-warnings scripts/tenant-sync-check.mjs",
     "test:provision": "node --no-warnings scripts/tenant-provision-check.mjs",

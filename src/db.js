@@ -580,6 +580,43 @@ CREATE TABLE IF NOT EXISTS approval_steps (
 );
 CREATE INDEX IF NOT EXISTS idx_step_appr ON approval_steps(approval_id);
 
+-- 可视化审批流程：规则与节点配置。official = 安装时预置且只读，custom = 管理员克隆后的草稿/版本
+CREATE TABLE IF NOT EXISTS approval_flows (
+  id             SERIAL PRIMARY KEY,
+  biz_type       TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  version        INTEGER NOT NULL DEFAULT 1,
+  state          TEXT NOT NULL DEFAULT 'draft',
+  source         TEXT NOT NULL DEFAULT 'custom',
+  priority       INTEGER NOT NULL DEFAULT 100,
+  conditions_json TEXT NOT NULL DEFAULT '[]',
+  auto_approve   INTEGER NOT NULL DEFAULT 0,
+  fallback       INTEGER NOT NULL DEFAULT 0,
+  created_by     INTEGER,
+  updated_by     INTEGER,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  published_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_flow_active ON approval_flows(biz_type, state, priority);
+
+CREATE TABLE IF NOT EXISTS approval_flow_steps (
+  id             SERIAL PRIMARY KEY,
+  flow_id        INTEGER NOT NULL REFERENCES approval_flows(id) ON DELETE CASCADE,
+  seq            INTEGER NOT NULL,
+  name           TEXT NOT NULL,
+  approver_mode  TEXT NOT NULL DEFAULT 'role',
+  role           TEXT,
+  user_id        INTEGER,
+  allow_change   INTEGER NOT NULL DEFAULT 1,
+  on_missing     TEXT NOT NULL DEFAULT 'block',
+  skip_duplicate INTEGER NOT NULL DEFAULT 1,
+  allow_self     INTEGER NOT NULL DEFAULT 0,
+  require_comment INTEGER NOT NULL DEFAULT 0,
+  stage          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_flow_step ON approval_flow_steps(flow_id, seq);
+
 CREATE TABLE IF NOT EXISTS targets (
   id         SERIAL PRIMARY KEY,
   user_id    INTEGER NOT NULL REFERENCES users(id),
@@ -865,6 +902,13 @@ const COLUMN_PATCHES = [
   // P1-B：组织数据迁移状态（pending/running/done/skipped/failed）与备注（老库补列）
   ['tenants', 'migration_state', "TEXT NOT NULL DEFAULT 'pending'"],
   ['tenants', 'migration_note', 'TEXT'],
+  // 可视化审批流程：只加追溯列，历史行为与 NULL 语义保持一致
+  ['approvals', 'flow_id', 'INTEGER'],
+  ['approvals', 'flow_version', 'INTEGER'],
+  ['approvals', 'rule_id', 'INTEGER'],
+  ['approvals', 'flow_source', 'TEXT'],
+  ['approval_steps', 'approver_mode', "TEXT NOT NULL DEFAULT 'role'"],
+  ['approval_steps', 'flow_step_id', 'INTEGER'],
 ];
 
 async function ensureColumns() {
