@@ -24,7 +24,7 @@ GET('/api/reports', async ctx => {
      left join org_units p on p.id = o.parent_id
      left join opportunities op on op.org_id = o.id and ${oppScope.sql}
      where o.type in ('company','dept') and o.path like ?
-     group by o.id having cnt > 0 order by won desc`, `${year}%`, ...oppScope.params, `${u.scope === 'all' ? '/' : u.orgPath}%`);
+     group by o.id, o.name, o.path, p.name having count(op.id) > 0 order by won desc`, `${year}%`, ...oppScope.params, `${u.scope === 'all' ? '/' : u.orgPath}%`);
   const byIndustry = await all(`select a.industry,
             coalesce(sum(case when op.stage='won' then op.amount else 0 end),0) won,
             coalesce(sum(case when op.stage not in ('won','lost') then op.amount else 0 end),0) pipeline,
@@ -56,7 +56,7 @@ GET('/api/reports', async ctx => {
             coalesce(sum(case when op.stage not in ('won','lost') then op.amount else 0 end),0) pipeline,
             count(op.id) cnt
      from opportunities op join users un on un.id=op.owner_id
-     where ${oppScope.sql} group by op.owner_id order by won desc limit 20`, ...oppScope.params);
+     where ${oppScope.sql} group by op.owner_id, un.name order by won desc limit 20`, ...oppScope.params);
   const contractStats = await one(`select coalesce(sum(c.amount),0) signed,
             coalesce((select sum(p.amount) from payments p join contracts c2 on c2.id=p.contract_id where ${ctScope.sql.replace(/c\./g, 'c2.')}),0) received
      from contracts c where c.status='active' and ${ctScope.sql}`, ...ctScope.params, ...ctScope.params);

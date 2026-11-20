@@ -95,8 +95,9 @@
 // 另一个入口是试用账号：必须先到官网注册会员，系统才会自动开通，这里只做引导。
 fetch('/api/setup/status').then((r) => r.json()).then((d) => {
   if (d.needed) { location.replace('/setup.html'); return; }
-  // 试用账号入口：链接跟着实例配置的官网地址走
-  const base = String(d.siteUrl || 'https://aioffice.aiemy.com').replace(/\/+$/, '');
+  // 试用账号入口：固定跳官网（OFFICIAL_URL），不用本实例地址——
+  // 本实例地址是自己的域名或内网 IP，拼出来的注册链接打不开
+  const base = String(d.officialUrl || 'https://aioffice.aiemy.com').replace(/\/+$/, '');
   const btn = document.getElementById('trialBtn');
   if (btn && /^https?:\/\//.test(base)) {
     btn.href = base + '/signup.html';

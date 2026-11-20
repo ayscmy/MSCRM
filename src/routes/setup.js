@@ -6,8 +6,10 @@ GET('/api/setup/status', async () => {
   const info = await installInfo();
   return {
     ...info,
-    // 官网地址：开源版不内置数据库，需注册会员下载
+    // 本实例地址：报价单分享链接、邮件里的链接用它
     siteUrl: process.env.SITE_URL || 'http://localhost:8099',
+    // 官网地址：注册会员、购买、升级都跳这里，**不受 SITE_URL 影响**
+    officialUrl: (process.env.OFFICIAL_URL || 'https://aioffice.aiemy.com').replace(/\/+$/, ''),
     edition: process.env.CRM_EDITION || 'community'
   };
 }, {

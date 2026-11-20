@@ -185,7 +185,8 @@ export async function importOrg(snapshot, opts = {}) {
         }
       }
       await run(
-        'insert or replace into settings(key,value,updated_at) values(?,?,?)',
+        `insert into settings(key,value,updated_at) values(?,?,?)
+         on conflict(key) do update set value=excluded.value, updated_at=excluded.updated_at`,
         MARKER_KEY, snap.checksum, nowIso()
       );
     });

@@ -3,11 +3,13 @@ const errBox = document.getElementById('setupErr');
 const btn = document.getElementById('setupBtn');
 const box = document.querySelector('.setup-box');
 
-// 官网地址由服务端下发，避免把域名写死在页面上
+// 官网地址由服务端下发（OFFICIAL_URL），避免把域名写死在页面上；
+// 注意不能用 siteUrl——那是本实例自己的地址
 fetch('/api/setup/status')
   .then((r) => r.json())
   .then((d) => {
-    if (d.siteUrl) document.getElementById('siteLink').href = d.siteUrl;
+    const link = document.getElementById('siteLink');
+    if (link && d.officialUrl) link.href = d.officialUrl;
     if (!d.needed) location.replace('/login.html');
   })
   .catch(() => {});

@@ -891,6 +891,19 @@ async function migratePg() {
     const s = stmt.trim();
     if (s) await boot.query(s);
   }
+
+  // PostgreSQL 没有 group_concat（那是 SQLite 的内建聚合），业务查询里有十余处用到。
+  // 这里补一个同名聚合，避免把查询全改成 string_agg——SQLite 又不认 string_agg。
+  // 空集返回 NULL、多个值用逗号连接，与 SQLite 行为一致。
+  await boot.query(`
+    CREATE OR REPLACE FUNCTION _gc_sfunc(text, text) RETURNS text
+      LANGUAGE sql IMMUTABLE AS $f$
+        SELECT CASE WHEN $1 IS NULL THEN $2 WHEN $2 IS NULL THEN $1 ELSE $1 || ',' || $2 END
+      $f$
+  `);
+  await boot.query('DROP AGGREGATE IF EXISTS group_concat(text)');
+  await boot.query('CREATE AGGREGATE group_concat(text) (SFUNC = _gc_sfunc, STYPE = text)');
+
   await boot.end();
 
   // 之后 pool 新建连接都默认走 crm schema
