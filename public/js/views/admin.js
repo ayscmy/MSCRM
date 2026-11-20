@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { state, labels } from '../store.js';
 import { icon } from '../icons.js';
+import { bindDrag, clearDropHighlight } from '../drag.js';
 import {
   esc, money, date, dateTime, relTime, badge, toast, modal, field, formData,
 } from '../ui.js';
@@ -145,7 +146,7 @@ async function renderUsers(panel, ctx) {
 
   <div class="role-pool" data-role-pool>
     <b style="font-size:11.5px;font-weight:500;color:var(--ink-3);align-self:center">角色权限池</b>
-    ${grantable.map((r) => `<span class="role-pool-chip" draggable="true" data-grant-role="${esc(r.key)}" title="拖到成员行的角色列即可授权">${esc(r.label)}</span>`).join('') || '<span class="muted">无可授予角色</span>'}
+    ${grantable.map((r) => `<span class="role-pool-chip drag-handle" data-grant-role="${esc(r.key)}" title="按住拖到成员行的角色列即可授权">${esc(r.label)}</span>`).join('') || '<span class="muted">无可授予角色</span>'}
     <span class="muted" style="font-size:11px;align-self:center;margin-left:auto">拖到成员行授权 · 把成员角色拖回这里回收</span>
   </div>
 
@@ -164,7 +165,10 @@ async function renderUsers(panel, ctx) {
             <div class="cell-sub">${LEVEL_TEXT[u.org_level] || `${u.org_level || 1} 级`}</div>
           </td>
           <td data-role-cell="${u.id}">
-            ${u.roles.map((r) => `<span class="user-role-chip" ${u.canManage && u.status !== 'left' ? `draggable="true" data-revoke-role="${u.id}:${esc(r)}" title="拖回角色权限池即可回收"` : ''}>${badge((d.roles.find((x) => x.key === r) || {}).label || r, 'blue')}</span>`).join(' ')}
+            ${u.roles.map((r) => {
+              const roleEditable = u.canManage && u.status !== 'left';
+              return `<span class="user-role-chip ${roleEditable ? 'drag-handle' : ''}" ${roleEditable ? `data-revoke-role="${u.id}:${esc(r)}" title="按住拖回角色权限池即可回收"` : ''}>${badge((d.roles.find((x) => x.key === r) || {}).label || r, 'blue')}</span>`;
+            }).join(' ')}
           </td>
           <td class="muted">${esc(u.relation || '—')}</td>
           <td>${statusCell(u)}</td>
@@ -230,56 +234,40 @@ async function renderUsers(panel, ctx) {
       ctx.refresh();
     } catch (e) { handleApiError(e); }
   };
-  panel.querySelectorAll('[data-grant-role]').forEach((chip) => {
-    chip.ondragstart = (e) => {
-      e.dataTransfer.setData('text/plain', `grant:${chip.dataset.grantRole}`);
-      e.dataTransfer.effectAllowed = 'copy';
-    };
-  });
-  panel.querySelectorAll('[data-role-cell]').forEach((cell) => {
-    cell.ondragover = (e) => {
-      if (![...e.dataTransfer.types].includes('text/plain')) return;
-      e.preventDefault();
-      cell.closest('tr')?.classList.add('row-drag-over');
-    };
-    cell.ondragleave = () => cell.closest('tr')?.classList.remove('row-drag-over');
-    cell.ondrop = async (e) => {
-      e.preventDefault();
-      cell.closest('tr')?.classList.remove('row-drag-over');
-      const raw = e.dataTransfer.getData('text/plain');
-      if (!raw.startsWith('grant:')) return;
-      const key = raw.slice(6);
+  // 角色授权：把权限池角色拖到成员行 —— 鼠标拖拽，兼容内嵌 WebView
+  bindDrag({
+    container: panel,
+    handle: '[data-grant-role].drag-handle',
+    selector: '[data-role-cell]',
+    payload: h => h.dataset.grantRole,
+    onHover: t => {
+      document.querySelectorAll('tr.row-drag-over').forEach(tr => tr.classList.remove('row-drag-over'));
+      if (t) t.closest('tr')?.classList.add('row-drag-over');
+    },
+    onDrop: async (key, cell) => {
       const u = findUser(cell.dataset.roleCell);
       if (!u?.canManage || u.status === 'left') return toast('该成员不可编辑', 'err');
       if (u.roles.includes(key)) return toast('该成员已有此角色', 'err');
       await setRoles(u, [...u.roles, key]);
-    };
+    }
   });
-  panel.querySelectorAll('[data-revoke-role]').forEach((chip) => {
-    chip.ondragstart = (e) => {
-      e.dataTransfer.setData('text/plain', `revoke:${chip.dataset.revokeRole}`);
-      e.dataTransfer.effectAllowed = 'move';
-    };
-  });
-  const pool = panel.querySelector('[data-role-pool]');
-  if (pool) {
-    pool.ondragover = (e) => {
-      if (![...e.dataTransfer.types].includes('text/plain')) return;
-      e.preventDefault();
-      pool.classList.add('drag-over');
-    };
-    pool.ondragleave = () => pool.classList.remove('drag-over');
-    pool.ondrop = async (e) => {
-      e.preventDefault();
-      pool.classList.remove('drag-over');
-      const raw = e.dataTransfer.getData('text/plain');
-      if (!raw.startsWith('revoke:')) return;
-      const [, uid, role] = raw.split(':');
+  // 角色回收：把成员角色拖回权限池
+  bindDrag({
+    container: panel,
+    handle: '[data-revoke-role].drag-handle',
+    selector: '[data-role-pool]',
+    payload: h => h.dataset.revokeRole,
+    onHover: t => {
+      clearDropHighlight('ptr-over');
+      if (t) t.classList.add('ptr-over');
+    },
+    onDrop: async (raw, poolEl) => {
+      const [uid, role] = String(raw).split(':');
       const u = findUser(uid);
       if (!u) return;
       await setRoles(u, u.roles.filter((r) => r !== role));
-    };
-  }
+    }
+  });
 }
 
 function editUser(user, ctx, data) {

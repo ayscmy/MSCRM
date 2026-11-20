@@ -633,3 +633,10 @@ nav.sb-nav { flex: 1; overflow-y: auto; padding-top: 2px; }
   .flow-body { grid-template-columns: 1fr; }
   .flow-side { border-left: 0; padding-left: 0; border-top: 1px solid var(--line-soft); padding-top: 12px; }
 }
+
+/* 鼠标拖拽（不依赖 HTML5 原生 DnD，兼容内嵌 WebView / 预览面板） */
+.drag-handle { cursor: grab !important; touch-action: none; user-select: none; }
+.drag-handle:active { cursor: grabbing !important; }
+.drag-handle *, .drag-handle { -webkit-user-drag: none; }
+.ptr-over { outline: 2px dashed var(--accent); outline-offset: 1px; background: var(--accent-soft) !important; }
+.flow-lane.ptr-over, .flow-step-edit.ptr-over { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
