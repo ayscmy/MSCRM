@@ -98,16 +98,23 @@ GET('/api/approvals/:id', async ctx => {
     throw denied('无权查看该审批');
   }
   ap.canDecide = ap.status === 'pending' && (ctx.user.role === 'admin' || Number(ap.steps.find(s => s.seq === ap.current_step)?.approver_id) === Number(ctx.user.id));
+  // 管理员代审提示：当前节点不是自己负责时，说明这是代审而非本职审批
+  const cur = ap.steps.find(s => s.seq === ap.current_step);
+  ap.actingAsAdmin = ap.status === 'pending' && ctx.user.role === 'admin' && Number(cur?.approver_id) !== Number(ctx.user.id);
+  // 还能一键通过剩余几关（仅管理员）
+  ap.remainingSteps = ap.steps.filter(s => s.decision === 'pending').length;
+  ap.canApproveAll = ap.status === 'pending' && ctx.user.role === 'admin' && ap.remainingSteps > 1;
   return ap;
 });
 POST('/api/approvals/:id/decide', async ctx => {
   const {
     decision,
-    comment
+    comment,
+    all
   } = ctx.body || {};
   if (!['approved', 'rejected'].includes(decision)) throw bad('审批结论只能是通过或驳回');
   if (decision === 'rejected' && !comment) throw bad('驳回必须填写意见');
-  const r = await decide(Number(ctx.params.id), ctx.user, decision, comment);
+  const r = await decide(Number(ctx.params.id), ctx.user, decision, comment, { all: Boolean(all) });
   if (r.error) throw bad(r.error);
   return r;
 });

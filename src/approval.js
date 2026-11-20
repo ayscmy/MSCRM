@@ -233,7 +233,7 @@ export async function createApproval({
 }
 
 /** 审批决策：approved / rejected */
-export async function decide(approvalId, user, decision, comment) {
+export async function decide(approvalId, user, decision, comment, { all = false } = {}) {
   return await tx(async () => {
     const ap = await one('select * from approvals where id = ?', approvalId);
     if (!ap) return {
@@ -246,12 +246,36 @@ export async function decide(approvalId, user, decision, comment) {
     if (!step) return {
       error: '审批节点异常'
     };
-    if (Number(step.approver_id) !== Number(user.id) && user.role !== 'admin') {
+    const isAdmin = user.role === 'admin';
+    if (Number(step.approver_id) !== Number(user.id) && !isAdmin) {
       return {
         error: '当前节点不由你审批'
       };
     }
+
+    // 管理员一键通过：把当前及之后所有待审节点一并置为通过。
+    // 只对管理员开放，且只在「通过」时可用；驳回仍只作用于当前节点。
+    if (all && isAdmin && decision === 'approved') {
+      const note = `管理员代审：${user.name}${comment ? '；' + comment : ''}`;
+      await run(
+        `update approval_steps set decision = 'approved', comment = ?, decided_at = ?
+          where approval_id = ? and decision = 'pending'`,
+        note, nowIso(), approvalId
+      );
+      await run('update approvals set status = ?, finished_at = ? where id = ?', 'approved', nowIso(), approvalId);
+      await applyBusiness(ap, 'approved', comment);
+      return {
+        ok: true,
+        status: 'approved',
+        viaAdmin: true
+      };
+    }
+
     await run('update approval_steps set decision = ?, comment = ?, decided_at = ? where id = ?', decision, comment || null, nowIso(), step.id);
+    // 代审留痕：管理员审的不是自己的节点时，把身份写进意见
+    if (isAdmin && Number(step.approver_id) !== Number(user.id)) {
+      await run('update approval_steps set comment = ? where id = ?', `管理员代审：${user.name}${comment ? '；' + comment : ''}`, step.id);
+    }
     if (decision === 'rejected') {
       await run('update approvals set status = ?, finished_at = ? where id = ?', 'rejected', nowIso(), approvalId);
       await applyBusiness(ap, 'rejected', comment);

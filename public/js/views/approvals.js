@@ -98,6 +98,9 @@ export async function openApproval(id, ctx) {
       </div>
       ${ap.canDecide ? `<div class="section">
         <div class="section-title">审批意见<span class="line"></span></div>
+        ${ap.actingAsAdmin ? `<div class="notice amber" style="margin-bottom:10px">
+          你正以<b>系统管理员</b>身份代审当前节点（原审批人不是你自己）。代审会记入审批意见。
+        </div>` : ''}
         <textarea class="textarea" id="comment" placeholder="驳回时必须填写意见，通过可选填"></textarea>
       </div>` : ''}
     </div>
@@ -105,6 +108,7 @@ export async function openApproval(id, ctx) {
       ${ap.canDecide ? `
         <button class="btn btn-danger" data-reject>驳回</button>
         <div class="spacer"></div>
+        ${ap.canApproveAll ? `<button class="btn" data-approve-all title="管理员可一次性通过当前及之后所有审批节点">一键通过全部（剩 ${ap.remainingSteps} 关）</button>` : ''}
         <button class="btn btn-primary" data-approve>通过并提交下一关</button>
       ` : '<div class="spacer"></div><button class="btn" data-close2>关闭</button>'}
     </div>`;
@@ -115,12 +119,13 @@ export async function openApproval(id, ctx) {
       const c2 = root.querySelector('[data-close2]');
       if (c2) c2.onclick = close;
 
-      const call = async (decision) => {
+      const call = async (decision, all = false) => {
         const comment = root.querySelector('#comment')?.value || '';
         if (decision === 'rejected' && !comment.trim()) return toast('驳回必须填写意见', 'err');
         try {
-          const r = await api.post(`/api/approvals/${id}/decide`, { decision, comment });
-          if (r.status === 'approved') toast('审批已通过，流程结束', 'ok');
+          const r = await api.post(`/api/approvals/${id}/decide`, { decision, comment, all });
+          if (r.viaAdmin) toast('已作为管理员一键通过全部节点', 'ok');
+          else if (r.status === 'approved') toast('审批已通过，流程结束', 'ok');
           else if (r.status === 'rejected') toast('已驳回', 'ok');
           else toast('已通过当前节点，流转到下一关', 'ok');
           close(); ctx.refresh();
@@ -131,6 +136,8 @@ export async function openApproval(id, ctx) {
       };
       const ok = root.querySelector('[data-approve]');
       if (ok) ok.onclick = () => call('approved');
+      const okAll = root.querySelector('[data-approve-all]');
+      if (okAll) okAll.onclick = () => call('approved', true);
       const rj = root.querySelector('[data-reject]');
       if (rj) rj.onclick = () => call('rejected');
     },
