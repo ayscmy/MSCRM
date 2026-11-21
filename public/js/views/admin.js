@@ -146,7 +146,7 @@ async function renderUsers(panel, ctx) {
 
   <div class="role-pool" data-role-pool>
     <b style="font-size:11.5px;font-weight:500;color:var(--ink-3);align-self:center">角色权限池</b>
-    ${grantable.map((r) => `<span class="role-pool-chip drag-handle" data-grant-role="${esc(r.key)}" title="按住拖到成员行的角色列即可授权">${esc(r.label)}</span>`).join('') || '<span class="muted">无可授予角色</span>'}
+    ${grantable.map((r) => `<span class="role-pool-chip drag-handle" data-grant-role="${esc(r.key)}" data-drag-label="角色：${esc(r.label)}" title="按住拖到成员行的角色列即可授权">${esc(r.label)}</span>`).join('') || '<span class="muted">无可授予角色</span>'}
     <span class="muted" style="font-size:11px;align-self:center;margin-left:auto">拖到成员行授权 · 把成员角色拖回这里回收</span>
   </div>
 
@@ -167,7 +167,7 @@ async function renderUsers(panel, ctx) {
           <td data-role-cell="${u.id}">
             ${u.roles.map((r) => {
               const roleEditable = u.canManage && u.status !== 'left';
-              return `<span class="user-role-chip ${roleEditable ? 'drag-handle' : ''}" ${roleEditable ? `data-revoke-role="${u.id}:${esc(r)}" title="按住拖回角色权限池即可回收"` : ''}>${badge((d.roles.find((x) => x.key === r) || {}).label || r, 'blue')}</span>`;
+              return `<span class="user-role-chip ${roleEditable ? 'drag-handle' : ''}" ${roleEditable ? `data-revoke-role="${u.id}:${esc(r)}" data-drag-label="回收：${esc((d.roles.find((x) => x.key === r) || {}).label || r)}" title="按住拖回角色权限池即可回收"` : ''}>${badge((d.roles.find((x) => x.key === r) || {}).label || r, 'blue')}</span>`;
             }).join(' ')}
           </td>
           <td class="muted">${esc(u.relation || '—')}</td>

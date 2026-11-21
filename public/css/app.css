@@ -640,3 +640,7 @@ nav.sb-nav { flex: 1; overflow-y: auto; padding-top: 2px; }
 .drag-handle *, .drag-handle { -webkit-user-drag: none; }
 .ptr-over { outline: 2px dashed var(--accent); outline-offset: 1px; background: var(--accent-soft) !important; }
 .flow-lane.ptr-over, .flow-step-edit.ptr-over { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
+.drag-ghost { opacity: .96; }
+.flow-move { padding: 2px 7px !important; min-width: 24px; line-height: 1.4 !important; }
+.flow-side-info { padding: 2px 0; }
+.flow-status-block { display: inline-block; margin-bottom: 4px; }

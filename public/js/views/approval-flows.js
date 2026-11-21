@@ -15,8 +15,10 @@ const S = {
   canEdit: false,
   data: null,
   biz: 'quote_discount',
+  tab: 'rules',                 // rules | preview —— 分开显示，避免一页堆满
   editing: false,
   working: [],
+  selected: 0,
   preview: null,
   sample: { quote_discount: { discount_rate: 12, amount: 500000 }, contract: { amount: 600000, payment_terms: 30 } }
 };
@@ -44,6 +46,7 @@ async function load() {
   S.data = await api.get('/api/settings/approval-flows');
   S.editing = false;
   S.working = [];
+  S.selected = 0;
   S.preview = null;
 }
 
@@ -57,12 +60,18 @@ function ruleCard(f, i, editable) {
   const badge = f.state === 'active'
     ? `<span class="flow-badge flow-badge-ok">${f.source === 'official' ? '官方预设' : `自定义 v${f.version}`} · 已启用</span>`
     : `<span class="flow-badge">草稿 v${f.version}</span>`;
+  const draggable = editable && !f.fallback;
+  const moveBtns = editable && !f.fallback
+    ? `<button class="btn btn-sm flow-move" data-act="move-rule" data-i="${i}" data-dir="-1" title="上移" ${i === 0 ? 'disabled' : ''}>↑</button>
+       <button class="btn btn-sm flow-move" data-act="move-rule" data-i="${i}" data-dir="1" title="下移" ${i >= S.working.length - 1 ? 'disabled' : ''}>↓</button>`
+    : '';
   return `<div class="flow-lane ${editable ? 'is-editing' : ''}" data-flow-index="${i}">
     <div class="flow-lane-head">
-      <span class="flow-grip ${editable && !f.fallback ? 'drag-handle' : ''}" title="${editable && !f.fallback ? '按住拖拽调整优先级' : '优先级'}">⋮⋮</span>
+      <span class="flow-grip ${draggable ? 'drag-handle' : ''}" data-drag-label="规则：${esc(f.name)}" title="${draggable ? '按住拖动改变优先级（拖动时有浮标跟随）' : '优先级'}">⋮⋮</span>
       <input class="flow-priority" type="number" min="1" value="${esc(f.priority)}" data-cprop="priority" data-ci="${i}" ${editable ? '' : 'disabled'} />
       <b class="flow-name">${esc(f.name)}</b>
       ${badge}
+      ${moveBtns}
       ${editable ? `<button class="btn btn-sm" data-act="del-rule" data-i="${i}">删除</button>` : ''}
     </div>
     <div class="flow-line"><span class="flow-line-label">条件</span>${conds}</div>
@@ -94,7 +103,9 @@ function editorPanel(f, i) {
     <button class="btn btn-sm" data-act="add-cond" data-i="${i}">+ 条件</button>
     <div class="flow-sub">审批节点（按顺序执行）</div>
     ${(f.steps || []).map((s, j) => `<div class="flow-step-edit" data-step="${j}" data-step-drop="${j}">
-      <div class="flow-step-head"><span class="flow-step-grip drag-handle" data-step-grip="${j}" title="按住拖拽调整节点顺序">⋮⋮</span><b>${j + 1}</b><input class="input" value="${esc(s.name)}" data-sprop="step_name" data-si="${i}" data-sj="${j}" />
+      <div class="flow-step-head"><span class="flow-step-grip drag-handle" data-step-grip="${j}" data-drag-label="节点：${esc(s.name)}" title="按住拖动调整节点顺序（拖动时有浮标跟随）">⋮⋮</span><b>${j + 1}</b><input class="input" value="${esc(s.name)}" data-sprop="step_name" data-si="${i}" data-sj="${j}" />
+        <button class="btn btn-sm flow-move" data-act="move-step" data-i="${i}" data-j="${j}" data-dir="-1" title="上移" ${j === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn btn-sm flow-move" data-act="move-step" data-i="${i}" data-j="${j}" data-dir="1" title="下移" ${j === f.steps.length - 1 ? 'disabled' : ''}>↓</button>
         <button class="btn btn-sm" data-act="del-step" data-i="${i}" data-j="${j}">×</button></div>
       <div class="flow-grid2">
         <label>审批人来源<select data-sprop="approver_mode" data-si="${i}" data-sj="${j}">
@@ -118,8 +129,8 @@ function editorPanel(f, i) {
     ${f.auto_approve ? '' : '<button class="btn btn-sm" data-act="add-step" data-i="${i}">+ 审批节点</button>'}
     ${f.auto_approve ? '' : `<div class="flow-sub">拖拽下方角色或人员到节点上，即可指定审批人</div>
     <div class="flow-approver-pool">
-      ${roles.map(r => `<span class="flow-approver-chip drag-handle" data-approver-mode="role" data-approver-id="${esc(r)}" title="拖到上方节点指定审批人">${esc(r)}</span>`).join('')}
-      ${users.slice(0, 40).map(u => `<span class="flow-approver-chip drag-handle" data-approver-mode="user" data-approver-id="${u.id}" title="拖到上方节点指定审批人">${esc(u.name)}</span>`).join('')}
+      ${roles.map(r => `<span class="flow-approver-chip drag-handle" data-approver-mode="role" data-approver-id="${esc(r)}" data-drag-label="角色：${esc(r)}" title="按住拖到上方节点指定审批人">${esc(r)}</span>`).join('')}
+      ${users.slice(0, 40).map(u => `<span class="flow-approver-chip drag-handle" data-approver-mode="user" data-approver-id="${u.id}" data-drag-label="人员：${esc(u.name)}" title="按住拖到上方节点指定审批人">${esc(u.name)}</span>`).join('')}
     </div>
     ${users.length > 40 ? `<div class="muted" style="font-size:10.5px;margin-top:4px">仅显示前 40 位人员，更多人员请用节点属性里的下拉框选择</div>` : ''}`}`;
 }
@@ -146,6 +157,22 @@ function previewPanel() {
   </div>`;
 }
 
+function readOnlySide(status) {
+  return `<div class="flow-side-info">
+    <div class="flow-prop-title">当前版本</div>
+    <div class="flow-status flow-status-block">${esc(status)}</div>
+    <p class="muted" style="font-size:11.5px;line-height:1.8;margin:10px 0">
+      新安装默认启用官方预设。只有系统管理员可以「可视化编辑」→ 保存草稿 → 发布；发布只影响新提交的单据，进行中的审批仍按原快照执行。
+    </p>
+    <button class="btn btn-sm" data-act="view-tab" data-view="preview">去试运行 →</button>
+    <div class="flow-sub">角色权限拖拽授权</div>
+    <p class="muted" style="font-size:11.5px;line-height:1.8">
+      在「用户与组织 → 用户与角色」里，把角色从权限池拖到成员行即可授权，把成员角色拖回权限池即可回收。
+    </p>
+    <a class="btn btn-sm" href="#/admin?tab=users">打开用户与组织</a>
+  </div>`;
+}
+
 function render() {
   if (!S.el || !S.data) return;
   const flows = currentFlows();
@@ -153,27 +180,51 @@ function render() {
   const draft = (S.data.flows || []).filter(f => f.biz_type === S.biz && f.state === 'draft');
   const draftVersion = draft.length ? draft[0].version : null;
   const status = S.editing ? `草稿 v${draftVersion}` : (active ? `官方/自定义 v${active} · 已启用` : '未启用（旧阈值链）');
-  S.el.innerHTML = `<div class="flow-design">
-    <div class="flow-head">
-      <div><h3>审批流程设计器 <span class="flow-status">${esc(status)}</span></h3>
-        <p class="muted">新安装默认使用官方预设；超级管理员可克隆为草稿后可视化调整，发布才影响新单据。</p></div>
-      <div class="flow-actions">
-        ${S.canEdit && !S.editing ? `<button class="btn btn-primary btn-sm" data-act="edit">可视化编辑</button>` : ''}
-        ${S.canEdit && S.editing ? `<button class="btn btn-primary btn-sm" data-act="save">保存草稿</button><button class="btn btn-sm" data-act="publish">发布</button><button class="btn btn-sm" data-act="cancel">取消</button>` : ''}
-        ${S.canEdit && !S.editing ? `<button class="btn btn-sm" data-act="restore">恢复官方预设</button>` : ''}
+  const bizTabs = (S.data.bizTypes || []).map(t => `<button class="btn btn-sm ${t.key === S.biz ? 'is-active' : ''}" data-act="tab" data-biz="${t.key}">${esc(t.label)}</button>`).join('');
+  const actions = `
+    ${S.canEdit && !S.editing ? `<button class="btn btn-primary" data-act="edit">可视化编辑</button>` : ''}
+    ${S.canEdit && S.editing ? `<button class="btn btn-primary" data-act="save">保存草稿</button><button class="btn" data-act="publish">发布</button><button class="btn" data-act="cancel">取消</button>` : ''}
+    ${S.canEdit && !S.editing ? `<button class="btn" data-act="restore">恢复官方预设</button>` : ''}`;
+
+  S.el.innerHTML = `<div class="page">
+    <div class="page-head">
+      <div>
+        <h1>审批流程设计 <span class="flow-status">${esc(status)}</span></h1>
+        <div class="desc">按单据类型配置条件和审批节点。规则与试运行分开展示；角色授权在「用户与组织」里拖拽完成。</div>
+      </div>
+      <div class="actions">${actions}</div>
+    </div>
+
+    <div class="toolbar" style="margin-bottom:14px">
+      <div class="seg" id="flowViewTabs">
+        <button class="${S.tab === 'rules' ? 'on' : ''}" data-act="view-tab" data-view="rules">流程规则</button>
+        <button class="${S.tab === 'preview' ? 'on' : ''}" data-act="view-tab" data-view="preview">试运行</button>
       </div>
     </div>
-    <div class="flow-tabs">${(S.data.bizTypes || []).map(t => `<button class="btn btn-sm ${t.key === S.biz ? 'is-active' : ''}" data-act="tab" data-biz="${t.key}">${esc(t.label)}</button>`).join('')}</div>
-    <div class="flow-body">
-      <div class="flow-canvas">
-        ${flows.map((f, i) => ruleCard(f, i, S.editing)).join('') || '<div class="muted">当前没有配置，走旧阈值链。</div>'}
-        ${S.editing ? '<button class="btn btn-sm" data-act="add-rule">+ 新建规则</button>' : ''}
-      </div>
-      <div class="flow-side">
-        ${S.editing ? editorPanel(S.working[S.selected], S.selected) : previewPanel()}
-      </div>
-    </div>
-    ${S.editing ? previewPanel() : ''}
+
+    ${S.tab === 'preview' ? `
+      <div class="flow-design">
+        <div class="flow-head"><div><h3>试运行（只读）</h3>
+          <p class="muted">按当前已启用版本试算，不会修改任何流程或单据。</p></div></div>
+        <div class="flow-tabs">${bizTabs}</div>
+        ${previewPanel()}
+      </div>` : `
+      ${S.editing ? `<div class="notice blue" style="margin-bottom:14px">
+        <b>拖拽用法：</b>按住规则左侧 <code>⋮⋮</code> 改变优先级；按住节点 <code>⋮⋮</code> 调整顺序；把下方角色/人员拖到节点上指定审批人。
+        拖动时会有蓝色浮标跟随鼠标，目标会高亮；也可用卡片上的 ↑ ↓ 按钮微调。
+      </div>` : ''}
+      <div class="flow-design">
+        <div class="flow-head"><div><h3>${S.editing ? '流程编辑（草稿）' : '当前审批规则'}</h3>
+          <p class="muted">从上到下依次匹配，命中第一条即执行；最后一条是无条件兜底规则。</p></div></div>
+        <div class="flow-tabs">${bizTabs}</div>
+        <div class="flow-body">
+          <div class="flow-canvas">
+            ${flows.map((f, i) => ruleCard(f, i, S.editing)).join('') || '<div class="muted">当前没有配置，走旧阈值链。</div>'}
+            ${S.editing ? '<button class="btn btn-sm" data-act="add-rule">+ 新建规则</button>' : ''}
+          </div>
+          ${S.editing ? `<div class="flow-side">${editorPanel(S.working[S.selected], S.selected)}</div>` : readOnlySide(status)}
+        </div>
+      </div>`}
   </div>`;
   bind();
 }
@@ -192,6 +243,27 @@ function bind() {
           await load();
           return render();
         }
+        if (act === 'view-tab') {
+          S.tab = btn.dataset.view;
+          return render();
+        }
+        if (act === 'move-rule') {
+          const to = i + Number(btn.dataset.dir);
+          if (!S.working[i] || to < 0 || to >= S.working.length || S.working[to]?.fallback) return;
+          const [moved] = S.working.splice(i, 1);
+          S.working.splice(to, 0, moved);
+          S.working.forEach((f, idx) => { f.priority = f.fallback ? 9999 : (idx + 1) * 10; });
+          S.selected = to;
+          return render();
+        }
+        if (act === 'move-step') {
+          const steps = S.working[i]?.steps || [];
+          const to = j + Number(btn.dataset.dir);
+          if (!steps[j] || to < 0 || to >= steps.length) return;
+          const [moved] = steps.splice(j, 1);
+          steps.splice(to, 0, moved);
+          return render();
+        }
         if (act === 'edit') {
           await api.post('/api/settings/approval-flows/clone-active', { bizType: S.biz });
           await load();
@@ -203,11 +275,19 @@ function bind() {
           return render();
         }
         if (act === 'save') {
+          const payload = f => ({
+            name: f.name, priority: f.priority, conditions: f.conditions,
+            autoApprove: !!f.auto_approve, fallback: !!f.fallback, steps: f.steps
+          });
+          // 先删掉设计器里已移除的草稿规则
+          const kept = new Set(S.working.filter(f => f.id).map(f => Number(f.id)));
+          const oldDrafts = (S.data.flows || []).filter(f => f.biz_type === S.biz && f.state === 'draft');
+          for (const d of oldDrafts) {
+            if (!kept.has(Number(d.id))) await api.del(`/api/settings/approval-flows/${d.id}`);
+          }
           for (const f of S.working) {
-            await api.patch(`/api/settings/approval-flows/${f.id}`, {
-              name: f.name, priority: f.priority, conditions: f.conditions,
-              autoApprove: !!f.auto_approve, steps: f.steps
-            });
+            if (f.id) await api.patch(`/api/settings/approval-flows/${f.id}`, payload(f));
+            else await api.post('/api/settings/approval-flows', { bizType: S.biz, ...payload(f) });
           }
           toast('草稿已保存', 'ok');
           await load();
@@ -236,6 +316,24 @@ function bind() {
           S.editing = false;
           S.working = [];
           await load();
+          return render();
+        }
+        if (act === 'add-rule') {
+          const fields = S.data.conditionFields[S.biz] || [];
+          const fallbackAt = S.working.findIndex(f => f.fallback);
+          const at = fallbackAt < 0 ? S.working.length : fallbackAt;
+          const rule = {
+            id: null, biz_type: S.biz, name: `新规则 ${S.working.length + 1}`,
+            version: S.working[0]?.version || 1, state: 'draft', source: 'custom',
+            priority: (at + 1) * 10,
+            conditions: [{ field: fields[0]?.key || 'amount', op: 'gt', value: 0 }],
+            auto_approve: 0, fallback: 0,
+            steps: [{ name: '新节点', approver_mode: 'role', role: 'manager', user_id: null,
+              allow_change: 1, on_missing: 'block', skip_duplicate: 0, allow_self: 0,
+              require_comment: 0, stage: '' }]
+          };
+          S.working.splice(at, 0, rule);
+          S.selected = at;
           return render();
         }
         if (act === 'del-rule') {

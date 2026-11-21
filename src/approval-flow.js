@@ -361,6 +361,9 @@ export async function designerState() {
 /** 把当前启用版本整体克隆为可编辑草稿 */
 export async function cloneActiveFlows(bizType, user) {
   if (!BIZ_TYPES.includes(bizType)) throw new Error('单据类型不合法');
+  // 幂等：已经存在草稿时直接复用，避免重复点“可视化编辑”生成多份草稿、规则翻倍
+  const existing = await loadFlows('where biz_type = ? and state = ?', [bizType, 'draft']);
+  if (existing.length) return existing[0].version;
   const active = await activeFlows(bizType);
   if (!active.length) throw new Error('当前没有启用中的流程可编辑');
   const max = await one('select max(version) v from approval_flows where biz_type = ?', bizType);
@@ -379,6 +382,36 @@ export async function cloneActiveFlows(bizType, user) {
   });
   await logChange(user, 'clone', null, `${BIZ_LABELS[bizType]} 克隆为草稿 v${version}`);
   return version;
+}
+
+/** 在已有草稿里新增一条规则（设计器「新建规则」→ 保存草稿时调用） */
+export async function createDraftFlow(bizType, body, user) {
+  if (!BIZ_TYPES.includes(bizType)) throw new Error('单据类型不合法');
+  const drafts = await loadFlows('where biz_type = ? and state = ?', [bizType, 'draft']);
+  if (!drafts.length) throw new Error('请先克隆当前流程为草稿');
+  const version = drafts[0].version;
+  const conditions = validateConditions(bizType, body.conditions || []);
+  const autoApprove = body.autoApprove ? 1 : 0;
+  const steps = validateSteps(bizType, body.steps || [], autoApprove);
+  const name = String(body.name || '新规则').trim();
+  if (!name) throw new Error('规则名称不能为空');
+  const priority = num(body.priority ?? (drafts.length + 1) * 10);
+  const fallback = body.fallback ? 1 : 0;
+  const now = nowIso();
+  let newId = null;
+  await tx(async () => {
+    const ins = await run(`insert into approval_flows(biz_type,name,version,state,source,priority,conditions_json,auto_approve,fallback,created_by,updated_by,created_at,updated_at)
+       values(?,?,?,?,?,?,?,?,?,?,?,?,?)`, bizType, name, version, 'draft', 'custom', priority,
+      JSON.stringify(conditions), autoApprove, fallback, user?.id || null, user?.id || null, now, now);
+    newId = idOf(ins);
+    for (const s of steps) {
+      await run(`insert into approval_flow_steps(flow_id,seq,name,approver_mode,role,user_id,allow_change,on_missing,skip_duplicate,allow_self,require_comment,stage)
+         values(?,?,?,?,?,?,?,?,?,?,?,?)`, newId, s.seq, s.name, s.approver_mode, s.role, s.user_id,
+        s.allow_change, s.on_missing, s.skip_duplicate, s.allow_self, s.require_comment, s.stage);
+    }
+  });
+  await logChange(user, 'create', newId, `新增草稿规则：${name}`);
+  return { id: newId, version };
 }
 
 export async function saveDraftFlow(id, body, user) {

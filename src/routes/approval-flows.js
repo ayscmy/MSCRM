@@ -2,6 +2,7 @@ import { GET, POST, PATCH, DELETE, bad, denied } from '../http.js';
 import {
   designerState,
   cloneActiveFlows,
+  createDraftFlow,
   saveDraftFlow,
   publishDraftFlows,
   restoreOfficialFlows,
@@ -25,6 +26,11 @@ GET('/api/settings/approval-flows', async ctx => designerState());
 POST('/api/settings/approval-flows/clone-active', async ctx => {
   requireAdmin(ctx.user);
   return await act(() => cloneActiveFlows(ctx.body?.bizType, ctx.user));
+});
+
+POST('/api/settings/approval-flows', async ctx => {
+  requireAdmin(ctx.user);
+  return await act(() => createDraftFlow(ctx.body?.bizType, ctx.body || {}, ctx.user));
 });
 
 PATCH('/api/settings/approval-flows/:id', async ctx => {
