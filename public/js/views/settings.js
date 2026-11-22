@@ -33,6 +33,14 @@ function inputFor(item, value, disabled) {
   if (item.type === 'textarea') {
     return `<textarea class="textarea" rows="3" data-set="${item.key}" ${disabled ? 'disabled' : ''}>${esc(v)}</textarea>`;
   }
+  if (item.type === 'image') {
+    return `<div class="stamp-upload" data-stamp-upload="${item.key}">
+      <input type="hidden" data-set="${item.key}" value="${esc(v)}" />
+      <input type="file" accept="image/png,image/jpeg,image/webp" data-stamp-file="${item.key}" ${disabled ? 'disabled' : ''} />
+      <div class="stamp-upload-preview">${v ? `<img src="${esc(v)}" alt="印章预览" />` : '<span class="muted">未上传（当前用文字章）</span>'}</div>
+      ${disabled ? '' : '<button type="button" class="btn btn-sm" data-stamp-clear>清除图片</button>'}
+    </div>`;
+  }
   if (item.type === 'password') {
     return `<input class="input" type="password" data-set="${item.key}" value="${esc(v)}" autocomplete="new-password" ${disabled ? 'disabled' : ''} />`;
   }
@@ -232,6 +240,35 @@ export async function render(el, route, ctx) {
       const key = btn.dataset.setnav;
       el.querySelectorAll('[data-setnav]').forEach((b) => b.classList.toggle('is-on', b === btn));
       el.querySelectorAll('[data-pane]').forEach((pane) => { pane.hidden = pane.dataset.pane !== key; });
+    };
+  });
+
+  /* ---------------- 报价章图片上传 ---------------- */
+  el.querySelectorAll('[data-stamp-file]').forEach((fileInput) => {
+    const key = fileInput.dataset.stampFile;
+    const wrap = fileInput.closest('[data-stamp-upload]');
+    const hidden = wrap.querySelector('[data-set]');
+    const preview = wrap.querySelector('.stamp-upload-preview');
+    fileInput.onchange = () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return toast('仅支持 PNG / JPG / WEBP 图片', 'err');
+      if (file.size > 1024 * 1024) return toast('图片不能超过 1MB（印章建议小图）', 'err');
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || '');
+        hidden.value = dataUrl;
+        preview.innerHTML = `<img src="${dataUrl}" alt="印章预览" />`;
+        toast('印章已载入，记得点击保存', 'ok');
+      };
+      reader.onerror = () => toast('读取图片失败', 'err');
+      reader.readAsDataURL(file);
+    };
+    const clearBtn = wrap.querySelector('[data-stamp-clear]');
+    if (clearBtn) clearBtn.onclick = () => {
+      fileInput.value = '';
+      hidden.value = '';
+      preview.innerHTML = '<span class="muted">未上传（当前用文字章）</span>';
     };
   });
 

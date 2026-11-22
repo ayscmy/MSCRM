@@ -468,7 +468,9 @@ CREATE TABLE IF NOT EXISTS quotations (
   has_custom     INTEGER NOT NULL DEFAULT 0,
   public_token   TEXT,
   last_sent_at   TEXT,
-  send_count     INTEGER NOT NULL DEFAULT 0
+  send_count     INTEGER NOT NULL DEFAULT 0,
+  view_phone     TEXT,
+  view_email     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS contracts (
@@ -742,6 +744,19 @@ CREATE TABLE IF NOT EXISTS quote_sends (
 );
 CREATE INDEX IF NOT EXISTS idx_qsend_quote ON quote_sends(quotation_id);
 
+-- 客户查看报价的短信验证码：手机号与报价 token 1对1，验证通过才显示原件
+CREATE TABLE IF NOT EXISTS quote_view_codes (
+  id           SERIAL PRIMARY KEY,
+  token        TEXT NOT NULL,
+  phone        TEXT NOT NULL,
+  code         TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  used         INTEGER NOT NULL DEFAULT 0,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_qvc_token_phone ON quote_view_codes(token, phone);
+
 CREATE TABLE IF NOT EXISTS api_clients (
   id           SERIAL PRIMARY KEY,
   name         TEXT NOT NULL,
@@ -909,6 +924,9 @@ const COLUMN_PATCHES = [
   ['approvals', 'flow_source', 'TEXT'],
   ['approval_steps', 'approver_mode', "TEXT NOT NULL DEFAULT 'role'"],
   ['approval_steps', 'flow_step_id', 'INTEGER'],
+  // 报价短信验证：客户查看原件时绑定的手机号/邮箱（老库补列）
+  ['quotations', 'view_phone', 'TEXT'],
+  ['quotations', 'view_email', 'TEXT'],
 ];
 
 async function ensureColumns() {

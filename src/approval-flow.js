@@ -338,18 +338,46 @@ async function logChange(user, action, flowId, detail) {
      values(?,?,?,?,?,?,?,?)`, user?.id || null, user?.name || '', action, 'approval_flow', flowId || null, detail || '', '', nowIso());
 }
 
-/** 配置管理接口用的读取入口 */
+/**
+ * 配置管理接口用的读取入口。
+ * - flows 仍读库（供执行层 / 克隆 / 发布 / 测试使用，审批行为不变）；
+ * - presetFlows 是代码内置官方预设，专供设计器只读展示：老实例库里没预设时也能显示一致的官方流程。
+ */
 export async function designerState() {
-  const enabled = String(await getSetting('approval.custom.enabled')) === '1';
   const flows = await loadFlows();
   const activeByBiz = {};
   for (const f of flows) if (f.state === 'active') activeByBiz[f.biz_type] = f.version;
+
+  // 内置官方预设（不读库），转成本地流程结构供只读展示
+  const presetFlows = [];
+  let seq = 1;
+  for (const preset of officialPreset()) {
+    for (const r of preset.rules) {
+      const conditions = await resolveConditionValues(r.conditions || []);
+      presetFlows.push({
+        id: seq++,
+        biz_type: preset.bizType,
+        name: r.name,
+        version: 1,
+        state: 'active',
+        source: 'official',
+        priority: r.priority,
+        conditions,
+        auto_approve: r.autoApprove ? 1 : 0,
+        fallback: r.fallback ? 1 : 0,
+        steps: (r.steps || []).map((s, i) => ({ id: seq * 100 + i, seq: i + 1, ...s }))
+      });
+    }
+  }
+
   const users = await all(`select u.id, u.name, o.name as org_name,
       (select group_concat(role) from user_roles r where r.user_id = u.id) as roles
      from users u join org_units o on o.id = u.org_id where u.status = 'active' order by o.path, u.id`);
   return {
-    enabled,
+    enabled: true,
+    readonly: true,
     flows,
+    presetFlows,
     activeVersions: activeByBiz,
     bizTypes: BIZ_TYPES.map(k => ({ key: k, label: BIZ_LABELS[k] })),
     conditionFields: CONDITION_FIELDS,
@@ -491,12 +519,29 @@ export async function previewFlow(bizType, sample, user) {
   // 试运行表单里填的是百分数（12 表示 12%），库里存的是比率（0.12）
   if (input.discount_rate !== undefined) input.discount_rate = num(input.discount_rate) / 100;
   const ctx = await buildApprovalContext(bizType, input);
-  const r = await resolveApprovalChain(bizType, ctx);
-  const resolved = await resolveFlowSteps(r.chain, ctx.orgId, ctx.applicantId);
+  // 只读官方预设：直接用代码内置规则匹配，不读写数据库
+  const preset = officialPreset().find(p => p.bizType === bizType);
+  let matched = null;
+  for (const r of (preset?.rules || [])) {
+    const conditions = await resolveConditionValues(r.conditions || []);
+    if (!matchConditions(conditions, ctx)) continue;
+    matched = r;
+    break;
+  }
+  const chain = matched
+    ? (matched.steps || []).map(s => ({
+        role: s.role, label: s.name, mode: s.approver_mode,
+        user_id: s.user_id, allow_change: s.allow_change !== 0,
+        on_missing: s.on_missing || 'block', skip_duplicate: s.skip_duplicate === 1,
+        allow_self: s.allow_self === 1, stage: s.stage || null
+      }))
+    : [];
+  const resolved = await resolveFlowSteps(chain, ctx.orgId, ctx.applicantId);
   return {
     bizType,
-    engine: r.engine,
-    meta: r.meta,
+    // 试运行按内置官方预设匹配；仍标记 custom 以兼容审批节点的免审批判断语义（此处不写库、不影响真实审批）
+    engine: 'custom',
+    meta: { ruleName: matched?.name || '无匹配规则', autoApprove: !!(matched?.auto_approve ?? matched?.autoApprove), source: 'official' },
     context: ctx,
     steps: resolved.steps.map(s => ({
       seq: s.seq,
@@ -507,6 +552,6 @@ export async function previewFlow(bizType, sample, user) {
       approver_name: s.approver_name
     })),
     missing: resolved.missing,
-    canEdit: user?.role === 'admin'
+    canEdit: false
   };
 }

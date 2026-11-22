@@ -201,8 +201,8 @@ export const SETTING_LABELS = [{
   }, {
     key: 'company.quote_stamp_image',
     label: '供应商报价章（图片）',
-    type: 'textarea',
-    hint: '可选。粘贴印章图片的 data URL（PNG 透明底最佳）；有图片时优先显示图片，否则显示上面的文字章'
+    type: 'image',
+    hint: '可选。点击上传印章图片（PNG 透明底最佳，≤1MB）；有图片时优先显示图片，否则显示上面的文字章'
   }, {
     key: 'site.public_url',
     label: '对外访问地址',

@@ -38,6 +38,8 @@ const valueLabel = (c, biz) => {
 
 function currentFlows() {
   if (S.editing) return S.working;
+  // 只读展示用内置官方预设，老实例库里没数据也能看到一致的规则
+  if (S.data?.readonly) return (S.data.presetFlows || []).filter(f => f.biz_type === S.biz);
   const version = S.data?.activeVersions?.[S.biz];
   return (S.data?.flows || []).filter(f => f.biz_type === S.biz && f.state === 'active' && (!version || f.version === version));
 }
@@ -179,7 +181,7 @@ function render() {
   const active = S.data.activeVersions?.[S.biz];
   const draft = (S.data.flows || []).filter(f => f.biz_type === S.biz && f.state === 'draft');
   const draftVersion = draft.length ? draft[0].version : null;
-  const status = S.editing ? `草稿 v${draftVersion}` : (active ? `官方/自定义 v${active} · 已启用` : '未启用（旧阈值链）');
+  const status = S.data.readonly ? '内置官方预设 · 只读' : (S.editing ? `草稿 v${draftVersion}` : (active ? `官方/自定义 v${active} · 已启用` : '未启用（旧阈值链）'));
   const bizTabs = (S.data.bizTypes || []).map(t => `<button class="btn btn-sm ${t.key === S.biz ? 'is-active' : ''}" data-act="tab" data-biz="${t.key}">${esc(t.label)}</button>`).join('');
   const actions = `
     ${S.canEdit && !S.editing ? `<button class="btn btn-primary" data-act="edit">可视化编辑</button>` : ''}
@@ -189,8 +191,8 @@ function render() {
   S.el.innerHTML = `<div class="page">
     <div class="page-head">
       <div>
-        <h1>审批流程设计 <span class="flow-status">${esc(status)}</span></h1>
-        <div class="desc">按单据类型配置条件和审批节点。规则与试运行分开展示；角色授权在「用户与组织」里拖拽完成。</div>
+        <h1>审批流程 <span class="flow-status">${esc(status)}</span></h1>
+        <div class="desc">${S.data.readonly ? '以下为系统内置官方预设，展示当前生效的审批规则与节点；如需调整阈值，请到「系统 → 折扣审批 / 合同审批」。角色授权在「用户与组织」里完成。' : '按单据类型配置条件和审批节点。规则与试运行分开展示；角色授权在「用户与组织」里拖拽完成。'}</div>
       </div>
       <div class="actions">${actions}</div>
     </div>

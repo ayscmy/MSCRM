@@ -477,6 +477,8 @@ POST('/api/quotations/:id/send', async ctx => {
   const phone = String(body.phone || data.contact.phone || '').trim();
   if (channels.includes('email') && !email) throw bad('请填写收件邮箱（客户联系人未维护邮箱）');
   if (channels.includes('sms') && !phone) throw bad('请填写接收短信的手机号（客户联系人未维护手机号）');
+  // 1对1查看：无论邮件/短信，都必须绑定客户手机号作为查看凭证
+  if (!/^1[3-9]\d{9}$/.test(phone)) throw bad('请填写客户手机号（用于短信验证查看报价原件）');
   const results = [];
   if (channels.includes('email')) {
     const subject = `【报价单】${q.no} · ${company.shortName || company.name} → ${q.account_name}`;
@@ -530,7 +532,9 @@ POST('/api/quotations/:id/send', async ctx => {
       content
     });
   }
-  await run('update quotations set last_sent_at=?, send_count=coalesce(send_count,0)+1, updated_at=? where id=?', nowIso(), nowIso(), q.id);
+  // 记录客户查看凭证：手机号与邮箱绑定到该报价，客户须凭绑定手机号短信验证才能看原件
+  await run('update quotations set view_phone=?, view_email=?, last_sent_at=?, send_count=coalesce(send_count,0)+1, updated_at=? where id=?',
+    phone || null, email || null, nowIso(), nowIso(), q.id);
   await run(`insert into activities(target_type,target_id,type,content,result,user_id,created_at)
      values('quotation',?,'email',?,?,?,?)`, q.id, `发送报价单：${results.map(x => `${x.channel === 'email' ? '邮件' : '短信'}→${x.target}（${x.status === 'sent' ? '成功' : x.status === 'simulated' ? '模拟' : '失败'}）`).join('，')}`, results.some(x => x.status === 'failed') ? 'failed' : 'done', ctx.user.id, nowIso());
   return {

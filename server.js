@@ -9,6 +9,7 @@ import { dispatch, HttpError, parseCookies } from './src/http.js';
 import { getSession, createSession, COOKIE } from './src/auth.js';
 import { DEMO_MODE, demoAccount } from './src/demo.js';
 import { findQuoteByToken, renderSheetHtml } from './src/doc/quote-sheet.js';
+import { verifyGrant, cookieName, boundPhone } from './src/quote-access.js';
 import { startTrialJanitor, TRIAL_DAYS, TRIAL_RETAIN_DAYS, TRIAL_URL } from './src/trial.js';
 import { startPoolJanitor, poolBanner } from './src/pool.js';
 import './src/routes/index.js';
@@ -23,6 +24,90 @@ const POOL_BANNER = await poolBanner();
 if (await setupNeeded()) {
   console.log('[init] 检测到空数据库，请打开安装向导完成初始化：/setup.html');
 }
+
+/** 报价单短信验证页：手机号 + 验证码，验证通过后回跳原链接 */
+function quoteVerifyPage(token, phoneMasked, quoteNo) {
+  return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>验证手机号 · 查看报价单</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+    background:#eef1f6; color:#1b1f27; font:14px/1.7 "Microsoft YaHei","PingFang SC",sans-serif; }
+  .box { width:100%; max-width:420px; background:#fff; border-radius:14px; padding:30px 28px;
+    box-shadow:0 10px 36px rgba(17,24,39,.11); }
+  .logo { font-size:13px; color:#2b4a8b; font-weight:700; letter-spacing:.5px; margin-bottom:16px; }
+  h1 { font-size:19px; margin:0 0 6px; }
+  .sub { color:#6b7280; font-size:13px; margin:0 0 22px; }
+  .no { background:#f4f6fa; border-radius:8px; padding:9px 12px; font-size:12.5px; color:#3c4353; margin-bottom:18px; }
+  .no b { font-family:Consolas,monospace; color:#1b1f27; }
+  label { display:block; font-size:12.5px; color:#3c4353; margin:14px 0 6px; }
+  .row { display:flex; gap:8px; }
+  input { flex:1; min-width:0; height:42px; padding:0 12px; border:1px solid #ccd4e0; border-radius:8px;
+    font-size:14px; outline:none; }
+  input:focus { border-color:#2b4a8b; box-shadow:0 0 0 3px rgba(43,74,139,.1); }
+  button { height:42px; padding:0 16px; border:none; border-radius:8px; cursor:pointer; font-size:13.5px; white-space:nowrap; }
+  .code { background:#eef2fa; color:#2b4a8b; border:1px solid #d7e0f2; }
+  .code:disabled { opacity:.6; cursor:default; }
+  .submit { width:100%; margin-top:22px; background:#2b4a8b; color:#fff; font-size:15px; font-weight:600; }
+  .submit:disabled { opacity:.6; cursor:default; }
+  .msg { margin-top:14px; font-size:12.5px; min-height:20px; color:#c0392b; }
+  .msg.ok { color:#1e8e5a; }
+  .tip { margin-top:18px; padding-top:14px; border-top:1px solid #eef1f6; font-size:12px; color:#9aa1ad; }
+</style></head>
+<body>
+  <div class="box">
+    <div class="logo">报价单安全查看</div>
+    <h1>验证手机号</h1>
+    <p class="sub">为保护商业信息，本报价需验证客户手机号后才能查看原件。</p>
+    <div class="no">报价单号 <b>${escHtml(quoteNo)}</b> · 绑定手机 ${escHtml(phoneMasked)}</div>
+    <label>客户手机号</label>
+    <input id="phone" inputmode="numeric" maxlength="11" placeholder="请输入绑定手机号" />
+    <label>短信验证码</label>
+    <div class="row">
+      <input id="code" inputmode="numeric" maxlength="6" placeholder="6 位验证码" />
+      <button class="code" id="send">获取验证码</button>
+    </div>
+    <button class="submit" id="ok">验证并查看报价</button>
+    <div class="msg" id="msg"></div>
+    <div class="tip">验证码仅发送给该报价绑定的客户手机号，5 分钟内有效。如非本人，请联系销售顾问重新发送报价。</div>
+  </div>
+<script>
+  const TOKEN = ${JSON.stringify(token)};
+  const $ = id => document.getElementById(id);
+  const msg = (t, ok) => { const e=$('msg'); e.textContent=t; e.className='msg'+(ok?' ok':''); };
+  async function post(path, body) {
+    const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    let d = {}; try { d = await r.json(); } catch {}
+    if (!r.ok) throw new Error(d.error || '请求失败');
+    return d;
+  }
+  $('send').onclick = async () => {
+    const phone = $('phone').value.trim();
+    if (!/^1[3-9]\\d{9}$/.test(phone)) return msg('请输入正确的手机号');
+    const btn = $('send'); btn.disabled = true; btn.textContent = '发送中…';
+    try {
+      const d = await post('/api/quote-access/send-code', { token: TOKEN, phone });
+      msg(d.simulated ? '验证码已生成（演示模式）：' + d.devCode : '验证码已发送，请查收短信', true);
+      let s = 60; const timer = setInterval(() => { btn.textContent = s + ' 秒后重发'; if (--s <= 0) { clearInterval(timer); btn.disabled = false; btn.textContent = '重新获取'; } }, 1000);
+    } catch (e) { msg(e.message); btn.disabled = false; btn.textContent = '获取验证码'; }
+  };
+  $('ok').onclick = async () => {
+    const phone = $('phone').value.trim(), code = $('code').value.trim();
+    if (!/^1[3-9]\\d{9}$/.test(phone)) return msg('请输入正确的手机号');
+    if (!/^\\d{6}$/.test(code)) return msg('请输入 6 位验证码');
+    const btn = $('ok'); btn.disabled = true; btn.textContent = '验证中…';
+    try {
+      await post('/api/quote-access/verify', { token: TOKEN, phone, code });
+      location.href = '/q/' + TOKEN;
+    } catch (e) { msg(e.message); btn.disabled = false; btn.textContent = '验证并查看报价'; }
+  };
+</script>
+</body></html>`;
+}
+
+const escHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -99,7 +184,7 @@ const server = createServer(async (req, res) => {
     '';
   const url = new URL(req.url, 'http://localhost');
   try {
-    // 客户免登录查看报价单：/q/<token>
+    // 客户查看报价单：/q/<token> —— 绑定手机时须短信验证，1对1才可看原件
     if (url.pathname.startsWith('/q/')) {
       const token = url.pathname.slice(3).replace(/\/+$/, '');
       const data = /^[a-f0-9]{16,64}$/.test(token) ? await findQuoteByToken(token) : null;
@@ -110,6 +195,19 @@ const server = createServer(async (req, res) => {
             <div style="font-size:18px;font-weight:600;margin-bottom:8px">报价单不存在或已失效</div>
             <div style="color:#888">链接可能已过期，请联系您的销售顾问重新获取。</div></div>`);
         return;
+      }
+      // 该报价是否强制短信验证：发送时绑定了手机号才开启（老报价无绑定则放行，保持兼容）
+      const bound = await boundPhone(token);
+      if (bound.phone) {
+        const cookies = parseCookies(req.headers.cookie);
+        const ok = await verifyGrant(cookies[cookieName(token)], token);
+        if (!ok) {
+          const q = data.q;
+          const mask = bound.phone.length === 11 ? `${bound.phone.slice(0, 3)}****${bound.phone.slice(7)}` : '已绑定手机';
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(quoteVerifyPage(token, mask, String(q.no || '')));
+          return;
+        }
       }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(await renderSheetHtml(data, { autoPrint: url.searchParams.get('print') === '1' }));
