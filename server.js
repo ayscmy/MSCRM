@@ -221,7 +221,7 @@ const server = createServer(async (req, res) => {
         res.writeHead(302, { Location: '/login.html?demo=off', 'Cache-Control': 'no-store' });
         return res.end();
       }
-      const token = createSession(acct, ip, req.headers['user-agent']);
+      const token = await createSession(acct, ip, req.headers['user-agent']);
       res.writeHead(302, {
         Location: '/app.html#/dashboard',
         'Cache-Control': 'no-store',
