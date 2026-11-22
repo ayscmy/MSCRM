@@ -75,6 +75,11 @@ export function docShell({
   .sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:34px; font-size:12.5px; }
   .sign .box { border-top:1px solid var(--line); padding-top:8px; line-height:2.2; }
   .sign .who { font-weight:700; }
+  .stamp-area { position:relative; min-height:56px; }
+  .stamp-mark { position:absolute; right:6px; top:-14px; width:88px; height:88px; object-fit:contain; opacity:.82; pointer-events:none; }
+  .stamp-word { position:absolute; right:2px; top:2px; max-width:170px; padding:6px 9px; border:2px solid #c0392b; border-radius:8px;
+                color:#c0392b; font-weight:700; font-size:11.5px; line-height:1.4; text-align:center; letter-spacing:.5px;
+                transform:rotate(-9deg); opacity:.85; pointer-events:none; }
   .foot { margin-top:22px; padding-top:8px; border-top:1px solid var(--soft); font-size:10.5px; color:var(--muted); text-align:center; }
   .badge-line { display:flex; gap:8px; align-items:center; justify-content:center; margin-top:6px; font-size:11px; color:var(--muted); }
   @media print {
@@ -99,6 +104,19 @@ ${body}
 </article>
 </body>
 </html>`;
+}
+
+/**
+ * 供应商报价章：图片 data URL 优先，其次文字章名。
+ * 仅允许 data:image/ 图片，避免把任意内容当作 src 注入。
+ */
+export function stampMark(company) {
+  const img = String(company?.quoteStampImage || '').trim();
+  if (/^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/i.test(img)) {
+    return `<img class="stamp-mark" src="${esc(img)}" alt="报价章" />`;
+  }
+  const text = String(company?.quoteStampText || '').trim();
+  return text ? `<span class="stamp-word">${esc(text)}</span>` : '';
 }
 
 /** 单据抬头：公司信息 + 编号信息 */

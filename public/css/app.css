@@ -376,6 +376,38 @@ nav.sb-nav { flex: 1; overflow-y: auto; padding-top: 2px; }
   .setgrid { grid-template-columns: 1fr; }
 }
 
+/* 设置页：功能卡片切换（一次只显示一个功能页） */
+.setwrap { display: grid; grid-template-columns: 216px minmax(0, 1fr); gap: 18px; align-items: start; }
+.setnav { display: flex; flex-direction: column; gap: 7px; position: sticky; top: 12px; }
+.setnav .setnav-title { font-size: 11px; color: var(--ink-3); letter-spacing: .5px; padding: 2px 10px 4px; }
+.setnav-card { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius); background: #fff; cursor: pointer; transition: border-color .14s, background .14s; }
+.setnav-card:hover { border-color: var(--accent); }
+.setnav-card.is-on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.setnav-card .ic { flex: 0 0 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  border-radius: 7px; background: var(--bg-sub); color: var(--ink-2); }
+.setnav-card.is-on .ic { background: #fff; color: var(--accent); }
+.setnav-card .tx { min-width: 0; }
+.setnav-card .tx b { display: block; font-size: 12.5px; color: var(--ink); font-weight: 600; }
+.setnav-card .tx small { display: block; font-size: 11px; color: var(--ink-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setpane { min-width: 0; }
+.setpane[hidden] { display: none; }
+.setpane .setgrid { grid-template-columns: 1fr; }
+.setpane-intro { margin-bottom: 14px; }
+@media (max-width: 860px) {
+  .setwrap { grid-template-columns: 1fr; }
+  .setnav { position: static; flex-direction: row; flex-wrap: wrap; }
+  .setnav .setnav-title { display: none; }
+  .setnav-card { width: auto; flex: 1 1 140px; }
+}
+
+/* 印章预览 */
+.stamp-preview { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.stamp-preview img { max-width: 120px; max-height: 120px; object-fit: contain; }
+.stamp-text-sample { display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px;
+  border: 2px solid #c0392b; border-radius: 8px; color: #c0392b; font-weight: 700; font-size: 13px;
+  transform: rotate(-8deg); letter-spacing: 1px; }
+
 /* ========================= 报价编辑器 ========================= */
 .qeditor { display: flex; flex-direction: column; gap: 12px; }
 .q-opp { padding: 10px 12px; border-radius: 8px; background: var(--bg-sub); border: 1px solid var(--line-soft); }

@@ -37,6 +37,9 @@ export const DEFAULTS = {
   'company.bank': '招商银行上海张江支行',
   'company.account': '1219 6688 9010 601',
   'company.legal_person': '陈立',
+  // 供应商报价章：打印在报价单/合同销售方盖章位。文字章名 + 可选印章图片(data URL)，有图片优先用图片
+  'company.quote_stamp_text': '上海铭世智能科技有限公司 报价专用章',
+  'company.quote_stamp_image': '',
   // 对外访问地址（发邮件/短信里的报价单链接），留空则按当前请求域名拼
   'site.public_url': '',
   // 邮件发送（SMTP）
@@ -190,6 +193,16 @@ export const SETTING_LABELS = [{
     key: 'company.legal_person',
     label: '法定代表人',
     type: 'text'
+  }, {
+    key: 'company.quote_stamp_text',
+    label: '供应商报价章（文字）',
+    type: 'text',
+    hint: '打印在报价单/合同销售方盖章位；留空则不显示文字章'
+  }, {
+    key: 'company.quote_stamp_image',
+    label: '供应商报价章（图片）',
+    type: 'textarea',
+    hint: '可选。粘贴印章图片的 data URL（PNG 透明底最佳）；有图片时优先显示图片，否则显示上面的文字章'
   }, {
     key: 'site.public_url',
     label: '对外访问地址',
@@ -363,7 +376,10 @@ export async function companyProfile() {
     phone: (await getSetting('company.phone')) || '',
     bank: (await getSetting('company.bank')) || '',
     account: (await getSetting('company.account')) || '',
-    legalPerson: (await getSetting('company.legal_person')) || ''
+    legalPerson: (await getSetting('company.legal_person')) || '',
+    // 供应商报价章：图片 data URL 优先，其次文字章名
+    quoteStampImage: (await getSetting('company.quote_stamp_image')) || '',
+    quoteStampText: (await getSetting('company.quote_stamp_text')) || ''
   };
 }
 

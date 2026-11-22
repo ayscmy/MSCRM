@@ -1,7 +1,7 @@
 import { one, all } from '../db.js';
 import { companyProfile } from '../settings.js';
 import { rmbUpper } from '../money-cn.js';
-import { docShell, docHead, partyBlock, esc, num, ymd } from './base.js';
+import { docShell, docHead, partyBlock, stampMark, esc, num, ymd } from './base.js';
 const r2 = n => Math.round(Number(n || 0) * 100) / 100;
 function parseJson(text, fallback) {
   if (!text) return fallback;
@@ -159,11 +159,12 @@ async function renderOrder({
       <div>盖章：</div>
       <div>日期：　　　年　　月　　日</div>
     </div>
-    <div class="box">
+    <div class="box stamp-area">
       <div class="who">销售方（乙方）：${esc(sellerInfo.name)}</div>
       <div>授权代表：${esc(sellerInfo.legalPerson || '')}</div>
       <div>盖章：</div>
       <div>日期：${ymd(c.sign_date || c.created_at)}</div>
+      ${stampMark(sellerInfo)}
     </div>
   </div>
 
@@ -222,10 +223,11 @@ async function renderTerms({
       <div>授权代表签字：</div>
       <div>日期：　　　年　　月　　日</div>
     </div>
-    <div class="box">
+    <div class="box stamp-area">
       <div class="who">乙方（盖章）：${esc(sellerInfo.name)}</div>
       <div>授权代表签字：${esc(sellerInfo.legalPerson || '')}</div>
       <div>日期：${ymd(c.sign_date || c.created_at)}</div>
+      ${stampMark(sellerInfo)}
     </div>
   </div>
 

@@ -1,7 +1,7 @@
 import { one, all } from '../db.js';
 import { companyProfile, getSetting } from '../settings.js';
 import { rmbUpper } from '../money-cn.js';
-import { docShell, docHead, partyBlock, esc, num, ymd } from './base.js';
+import { docShell, docHead, partyBlock, stampMark, esc, num, ymd } from './base.js';
 
 /** 报价单所需数据（不包含成本，客户可见） */
 export async function loadQuoteSheet(quotationId) {
@@ -120,11 +120,12 @@ export async function renderSheetHtml({
       <div>盖章：</div>
       <div>日期：　　　年　　月　　日</div>
     </div>
-    <div class="box">
+    <div class="box stamp-area">
       <div class="who">供方（乙方）</div>
       <div>${esc(company.name)}</div>
       <div>经办人：${esc(q.owner_name || '')}</div>
       <div>日期：${ymd(q.created_at)}</div>
+      ${stampMark(company)}
     </div>
   </div>
 
